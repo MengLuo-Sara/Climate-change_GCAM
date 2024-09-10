@@ -13,3 +13,4 @@ Meng Luo1, Xin Zhao2, Dalei Hao3, Ben Bond-Lamberty2, Adam Daigneault4, Pralit L
 
 Corresponding author: Min Chen (min.chen@wisc.edu)
 
+If you are interested in the data used in this study, please visit https://doi.org/10.6084/m9.figshare.26978119.v1.
