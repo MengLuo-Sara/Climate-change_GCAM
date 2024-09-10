@@ -1,0 +1,502 @@
+---
+title: "process_ISIMIP3b_data"
+author: "Meng"
+date: "2024-03-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r S0 set path and install package}
+# require(devtools)
+#Please use this in console if needed: install_github('JGCRI/rgcam', build_vignettes=TRUE, force =TRUE)
+
+
+library(tidyverse)
+library(tidyr)
+library(dplyr)
+library(patchwork)
+library(sf)
+library(svglite)
+library(cowplot)
+library(gridExtra)
+library(ggthemes)
+library(scales) # for the percentage format on y-axis
+library(RColorBrewer)
+
+
+library(ncdf4)
+library(raster)
+library(ggplot2)
+library(viridis)
+
+
+library(purrr)
+
+
+
+
+root <- "O:/"
+
+
+
+
+## C:\MengLuo\E\new laptop2\PHD\ISIMIP 3b
+
+in_ISIMIP3b_main_path <- paste0(root,"E/new laptop2/ISIMIP data/ISIMIP_3b/")
+out_main_path<-paste0(root,"E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/ISIMIP3b_processed/baseline rh npp/")
+
+
+gcam_subregion_mapping <- read.csv(paste0(root,"E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Code/R/GCAM_mapping/gcam2glm_mapping.csv"))
+# read shp file
+# shp_path <- paste0(root, "E/new laptop2/PHD/GCAM/boundary/gcam_boundaries_moirai_3p1_0p5arcmin_wgs84/gcam_boundaries_moirai_3p1_0p5arcmin_wgs84/main_outputs/region_boundaries_moirai_combined_3p1_0p5arcmin.shp")
+# # plot(data_sf)
+# data_sf <- st_read(shp_path)
+
+```
+
+```{r S1 functions}
+##########################################################################
+# Function to process each layer
+process_layer <- function(data_slice, year_label, lon_min, lon_max, lat_min, lat_max) {
+  raster_layer <- raster(t(data_slice), xmn=lon_min, xmx=lon_max, ymn=lat_min, ymx=lat_max, crs=CRS("+proj=longlat +datum=WGS84"))
+  ISIMIP_matrix <- as.data.frame(rasterToPoints(raster_layer)) %>%
+    rename(lon = x, lat = y, value = layer) %>%
+    filter(value < 10e20) %>%
+    mutate(year_label = year_label)
+  
+  return(ISIMIP_matrix)
+}
+
+
+#############################################################################
+# Function to process each year
+process_year_pft_npp <- function(year, data1, data2) {
+  
+  #################
+  ## test
+  # year<-years1[1]
+  # data1 <-ISIMIP_gcam_pft
+  # data2 <-ISIMIP_gcam_npp_pft
+  # 
+
+  ################
+  # Calculate the total for each group in data1
+  data1_2 <- data1 %>%
+    filter(year_label == year) %>%
+    group_by(out_reg_code, out_lu_code, gcam_reg_name, basin_abr) %>%
+    summarise(pft_total = sum(pft * weight * cos(center_lat*pi/180), na.rm = TRUE), .groups = 'drop')
+
+  # Join this back to data2 and calculate the new pft values
+  result <- data2 %>%
+    filter(year_label == year) %>%
+    dplyr::select(-center_lon) %>%  # Exclude 'center_lon' from data2 before joining
+    left_join(data1_2, by = c("out_reg_code", "out_lu_code", "gcam_reg_name", "basin_abr")) %>%
+    mutate(pft_new = (pft * weight * cos(center_lat*pi/180)) / pft_total) %>%
+    mutate(pft_new = ifelse(is.na(pft_new), 0, pft_new)) %>%
+    dplyr::select(-weight, -pft, -pft_total, -center_lat) %>%  # Exclude specific columns after calculations
+    group_by(out_reg_code, out_lu_code, gcam_reg_name, basin_abr) %>%
+    summarise(npp_mean = weighted.mean(npp, pft_new, na.rm = TRUE), .groups = 'drop')
+
+  return(result)
+}
+
+
+
+
+
+# # Function to process each year
+# process_year_npp <- function(year, data) {
+#   data %>%
+#     filter(year_label == year) %>%
+#     group_by(out_reg_code,out_lu_code,gcam_reg_name,basin_abr) %>%
+#     summarise(agg_lu_value = weighted.mean(npp, pft_weight), .groups = 'drop')
+# }
+
+##########################################################################
+# Function to dynamically rename and join data frames
+join_and_rename_pft_npp <- function(data_list, join_keys) {
+  result_df <- data_list[[1]] %>% 
+    rename(!!paste0("npp_mean", 2015) := npp_mean)
+  
+  if (length(data_list) > 1) {
+    for (i in 2:length(data_list)) {
+      year <- 2014 + i  # Adjust based on your actual year naming needs
+      column_name <- paste0("npp_mean", year)
+      
+      # Dynamically rename and join
+      result_df <- result_df %>% 
+        left_join(data_list[[i]] %>% 
+                    rename(!!column_name := npp_mean),
+                  by = join_keys)
+    }
+  }
+  
+  return(result_df)
+}
+
+
+
+##########################################################################
+# Function to process each layer with weighting
+process_layer_with_weighting <- function(data_slices, year_label, lon_min, lon_max, lat_min, lat_max, month_weights) {
+  weighted_data_slices <- list()
+  for (m in 1:length(data_slices)) {
+    # Apply the monthly weight to each data slice
+    weighted_data_slices[[m]] <- data_slices[[m]] * month_weights[m]
+  }
+  # Sum the weighted data slices to get the annual weighted average
+  annual_data_slice <- Reduce("+", weighted_data_slices)
+  
+  raster_layer <- raster(t(annual_data_slice), xmn=lon_min, xmx=lon_max, ymn=lat_min, ymx=lat_max, crs=CRS("+proj=longlat +datum=WGS84"))
+  ISIMIP_matrix <- as.data.frame(rasterToPoints(raster_layer)) %>%
+    rename(lon = x, lat = y, value = layer) %>%
+    filter(value < 10e20) %>%
+    mutate(year_label = year_label)
+  
+  return(ISIMIP_matrix)
+}
+```
+
+```{r automatically read the nc file}
+
+# Specify the directory containing the .nc files
+npp_dir_path <- paste0(root, "E/new laptop2/ISIMIP data/ISIMIP_3b/npp hist")
+rh_dir_path <- paste0(root, "E/new laptop2/ISIMIP data/ISIMIP_3b/rh hist")
+pft_dir_path <- paste0(root, "E/new laptop2/ISIMIP data/ISIMIP_3b/pft hist")
+
+# List all .nc files in the directory
+npp_files <- list.files(path = npp_dir_path, pattern = "histsoc_default_.*\\.nc$", full.names = TRUE)
+rh_files <- list.files(path = rh_dir_path, pattern = "histsoc_default_.*\\.nc$", full.names = TRUE)
+pft_files <- list.files(path = pft_dir_path, pattern = "histsoc_default_.*\\.nc$", full.names = TRUE)#histsoc_nondep
+
+## still need to run
+
+# npp_files <- list.files(path = npp_dir_path, pattern = "histsoc_nondep_.*\\.nc$", full.names = TRUE)
+# rh_files <- list.files(path = rh_dir_path, pattern = "histsoc_nondep_.*\\.nc$", full.names = TRUE)
+# pft_files <- list.files(path = pft_dir_path, pattern = "histsoc_nondep_.*\\.nc$", full.names = TRUE)
+
+```
+
+```{r S2 read data}
+## read in nc file
+
+lon_min <- -180
+lon_max <- 180
+lat_min <- -90
+lat_max <- 90
+
+
+# check<-npp_dcdcldbdltr[,,1]
+###############################
+
+month_weight<-c(31,28,31,30,31,30,31,31,30,31,30,31)/365
+
+
+################
+
+
+
+```
+
+
+```{r S3 process agb, bgb to gcam subregion weight mean}
+
+## it take about 1.82396 mins for each loop
+# for(data_idx in 1:length(npp_files)) {
+  for(data_idx in 2:9) {
+  # data_idx <- 1
+  # Record the start time
+start_time <- Sys.time()
+
+
+
+
+
+  in_npp <- npp_files[data_idx]
+  in_pft <- pft_files[data_idx]
+  in_rh <- rh_files[data_idx]
+  
+  ncfile_npp <- nc_open(in_npp)
+  ncfile_pft <- nc_open(in_pft)
+  ncfile_rh <- nc_open(in_rh)
+  
+  # Extract the PFT part from the file name using a regular expression
+  pft_part <- sub(".*_pft-(.*?)_.*", "\\1", basename(in_pft))
+  
+  pft_pft <- paste0("pft-", pft_part)
+  npp_pft <- paste0("npp-", pft_part)
+  rh_pft <- paste0("rh-", pft_part)
+  
+  # get variable from nc
+  npp_dcdcldbdltr <- ncvar_get(ncfile_npp, npp_pft)
+  pft_dcdcldbdltr <- ncvar_get(ncfile_pft, pft_pft)
+  rh_dcdcldbdltr <- ncvar_get(ncfile_rh, rh_pft)
+  
+  # Close the NetCDF file
+  nc_close(ncfile_npp)
+  nc_close(ncfile_pft)
+  nc_close(ncfile_rh)
+  
+  ###########################
+  # Extract the file name from the path
+  npp_file_name <- basename(in_npp)
+  
+  # Use a regular expression to remove the trailing part of the file name, starting from "_global"
+  # This will keep the part of the file name before "_global"
+  desired_name_part <- sub("_global.*", "", npp_file_name)
+  
+  # Print the extracted part to check
+  print(desired_name_part)
+  
+  
+  # Initialize an empty data frame for the results
+  all_ISIMIP_matrices_npp0 <- data.frame()
+  all_ISIMIP_matrices_rh0 <- data.frame()
+  all_ISIMIP_matrices_pft <- data.frame()
+  #############################
+  # Assuming each 12 consecutive layers represent one year
+  # use 2011 to 2014
+  num_years <- 1980 / 12
+  for (year_idx in 161:num_years) {
+    # print(year_idx)
+    
+    #year_idx<-1
+    # Extract slices for the current year
+    start_layer <- (year_idx - 1) * 12 + 1
+    end_layer <- year_idx * 12
+    data_slices_npp <-
+      lapply(start_layer:end_layer, function(i)
+        npp_dcdcldbdltr[, , i])
+    
+    data_slices_rh <-
+      lapply(start_layer:end_layer, function(i)
+        rh_dcdcldbdltr[, , i])
+    
+    year_label <-
+      paste0(1850 + (year_idx - 1)) # Adjust based on your actual year labeling needs
+    
+    print(year_label)
+    
+    ISIMIP_matrix_npp <-
+      process_layer_with_weighting(data_slices_npp,
+                                   year_label,
+                                   lon_min,
+                                   lon_max,
+                                   lat_min,
+                                   lat_max,
+                                   month_weight)
+    
+    ISIMIP_matrix_rh <-
+      process_layer_with_weighting(data_slices_rh,
+                                   year_label,
+                                   lon_min,
+                                   lon_max,
+                                   lat_min,
+                                   lat_max,
+                                   month_weight)
+    
+    all_ISIMIP_matrices_npp0 <-
+      bind_rows(all_ISIMIP_matrices_npp0, ISIMIP_matrix_npp)
+    
+    all_ISIMIP_matrices_rh0 <-
+      bind_rows(all_ISIMIP_matrices_rh0, ISIMIP_matrix_rh)
+  }
+  
+  # write.csv(
+  #   all_ISIMIP_matrices_npp0,
+  #   paste0(
+  #     out_main_path,
+  #     "/middle_output/",
+  #     npp_file_name,
+  #     "_annualy_all_ISIMIP_matrices_npp.csv"
+  #   ),
+  #   row.names = FALSE
+  # )
+  ############################
+  
+  
+  
+  # the npp baseline here is the npp data in 2015
+  all_ISIMIP_matrices_npp <- all_ISIMIP_matrices_npp0 %>%
+    pivot_wider(values_from = value, names_from = year_label)
+  
+  # Apply a function over rows (MARGIN=1) that checks if any values from the 10th column to the last are below 0
+  rows_to_remove <-
+    apply(all_ISIMIP_matrices_npp[, 3:ncol(all_ISIMIP_matrices_npp)], 1, function(x)
+      any(x < 0))
+  
+  # Filter out the rows where the condition is TRUE
+  all_ISIMIP_matrices_npp_filtered <-
+    all_ISIMIP_matrices_npp[!rows_to_remove,]%>%
+    pivot_longer(cols = 3:ncol(all_ISIMIP_matrices_npp), values_to = "value" ,names_to = "year_label")
+  
+  
+  
+  all_ISIMIP_matrices_npp <-
+    all_ISIMIP_matrices_npp_filtered#  %>%
+    # mutate(value = ifelse(is.na(value), 0, value))
+  
+  all_ISIMIP_matrices_rh<-all_ISIMIP_matrices_rh0 
+  
+   all_ISIMIP_matrices_rh_npp<-all_ISIMIP_matrices_rh%>%
+    left_join(all_ISIMIP_matrices_npp%>% rename(npp=value), by = c("lon","lat","year_label"))%>%
+   rename(rh=value)
+   
+  ################################################################################################################
+  # Loop through each time dimension for annualy data
+  for (i in 161:165) {
+    data_slice_pft <- pft_dcdcldbdltr[, , i]
+    year_label_pft <-
+      paste0(1850 + (i - 1)) # Adjust based on your actual year labeling needs
+    ISIMIP_matrix_pft <-
+      process_layer(data_slice_pft,
+                    year_label_pft,
+                    lon_min,
+                    lon_max,
+                    lat_min,
+                    lat_max)
+    all_ISIMIP_matrices_pft <-
+      bind_rows(all_ISIMIP_matrices_pft, ISIMIP_matrix_pft)
+  }
+  
+  
+  # write.csv(
+  #   all_ISIMIP_matrices_pft,
+  #   paste0(
+  #     out_main_path,
+  #     "/middle_output/",
+  #     npp_file_name,
+  #     "_all_ISIMIP_matrices_pft.csv"
+  #   ),
+  #   row.names = FALSE
+  # )
+  
+  ## make sure npp data has all lon lat row, and has all year for each pair of lon lat
+  all_ISIMIP_matrices_rh_npp2<-gcam_subregion_mapping%>%
+    dplyr::select(center_lat,center_lon)%>%
+    tidyr::expand_grid(year_label = 2010:2014, .) %>%
+    mutate(year_label=as.character(year_label))%>%
+    arrange(center_lat, center_lon, year_label)%>%
+    left_join(all_ISIMIP_matrices_rh_npp,by=c("center_lon" = "lon", "center_lat" = "lat","year_label"))%>%
+    dplyr::select(center_lat, center_lon, year_label,rh,npp)%>%
+    ## newly added
+    distinct()
+  
+  
+  
+  # Assuming gcam_subregion_mapping and all_ISIMIP_matrices are ready for joining
+  all_ISIMIP_matrices_rh_npp3 <- gcam_subregion_mapping %>%
+    left_join(
+      all_ISIMIP_matrices_rh_npp2, by = c("center_lon" , "center_lat" )
+    ) %>%
+    left_join(
+      all_ISIMIP_matrices_pft %>%
+    ## newly added
+    distinct()%>% rename (pft = value),
+      by = c(
+        "center_lon" = "lon",
+        "center_lat" = "lat",
+        "year_label"
+      )
+    )
+
+  
+###  I am here ##########################################################
+
+all_ISIMIP_matrices_rh_npp_baseline<- all_ISIMIP_matrices_rh_npp3%>%
+    group_by(center_lon , center_lat)%>%
+    summarise(npp = mean(npp, na.rm = TRUE),
+    rh = mean(rh, na.rm = TRUE))%>%
+    ungroup()%>%
+    mutate(year_label="2014")# use 2014 to represent the mean of 2010 to 2014
+
+
+  # save proceed data
+  write.csv(
+    all_ISIMIP_matrices_rh_npp_baseline,
+    paste0(
+      out_main_path,
+      "/baseline/",
+      desired_name_part,
+      "_rh_npp_baseline.csv"
+    ),
+    row.names = FALSE
+  )
+
+ #  
+ #  # Generate a vector of years as labels
+ #  years1 <- as.character(seq(2015, 2100, length.out = 86))
+ #  
+ #  
+ #  ISIMIP_gcam_npp <- dplyr::select(ISIMIP_gcam_npp_pft, -c("pft"))
+ #  
+ #  ISIMIP_gcam_pft <- dplyr::select(ISIMIP_gcam_npp_pft, -c("npp"))
+ #  
+ #  
+ #  ISIMIP_gcam_list_pft_npp <- data.frame()
+ #  # Use lapply to apply the function to each year
+ #  ISIMIP_gcam_list_pft_npp <-
+ #    lapply(years1,
+ #           process_year_pft_npp,
+ #           data1 = ISIMIP_gcam_pft,
+ #           data2 = ISIMIP_gcam_npp_pft)
+ #  
+ # check7<- process_year_pft_npp(years1,data1 = ISIMIP_gcam_pft,
+ #           data2 = ISIMIP_gcam_npp_pft)
+ #  # ISIMIP_gcam_list_pft <- lapply(years1, process_year, data = ISIMIP_gcam_pft)
+ #  
+ #  check_negative <- sapply(ISIMIP_gcam_list_pft_npp, function(x) any(x < 0))
+ #  
+ #  
+ #  # First, rename the 'agg_lu_value' column in each data frame with the corresponding year
+ #  years <- seq(2015, 2100, length.out = 86)
+ #  names(ISIMIP_gcam_list_pft_npp) <-
+ #    years  # Naming the list elements for reference
+ #  print("1")
+ #  
+ #  # Specify join keys as a vector
+ #  join_keys <-
+ #    c("out_reg_code", "out_lu_code", "gcam_reg_name", "basin_abr")
+ #  
+ #  # Apply the function
+ #  ISIMIP_gcam_combined_pft_npp <-
+ #    join_and_rename_pft_npp(ISIMIP_gcam_list_pft_npp, join_keys)
+ #  
+ #  
+ #  # save proceed data
+ #  write.csv(
+ #    ISIMIP_gcam_combined_pft_npp,
+ #    paste0(
+ #      out_main_path,
+ #      "/annual_wmean/",
+ #      desired_name_part,
+ #      "_npp_m_pft_annualy_scale.csv"
+ #    ),
+ #    row.names = FALSE
+ #  )
+ # 
+ #  
+ #  
+  
+# Record the end time
+end_time <- Sys.time()
+
+# Calculate the duration and print it
+duration <- end_time - start_time
+print(duration)
+  
+}
+
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

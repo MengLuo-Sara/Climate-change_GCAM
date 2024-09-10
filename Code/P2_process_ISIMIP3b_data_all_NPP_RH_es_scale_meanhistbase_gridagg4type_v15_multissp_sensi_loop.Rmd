@@ -1,0 +1,766 @@
+---
+title: "process_ISIMIP3b_data"
+author: "Meng"
+date: "2024-03-18"
+output: html_document
+---
+
+## contents
+S0 set path and install package
+S1 functions
+S2 check needed file order num
+S3 automatically read the file and process npp rh to gcam subregion weight mean
+S4 check npp_rh
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r S0 set path and install package}
+# require(devtools)
+#Please use this in console if needed: install_github('JGCRI/rgcam', build_vignettes=TRUE, force =TRUE)
+
+
+library(tidyverse)
+library(tidyr)
+library(dplyr)
+library(patchwork)
+library(sf)
+library(svglite)
+library(cowplot)
+library(gridExtra)
+library(ggthemes)
+library(scales) # for the percentage format on y-axis
+library(RColorBrewer)
+
+
+library(ncdf4)
+library(raster)
+library(ggplot2)
+library(viridis)
+
+
+library(purrr)
+
+
+
+
+# chen lab desktop
+# root <- "O:/"
+
+# new laptop
+root <- "D:/"
+
+fig_save_path <- paste0("C:/MengLuo/my_2024_1_manuscript/Figure&table/figure/")
+
+
+## C:\MengLuo\E\new laptop2\PHD\ISIMIP 3b
+
+in_ISIMIP3b_main_path <- paste0(root,"E/new laptop2/ISIMIP data/ISIMIP_3b/")
+out_main_path<-paste0(root,"E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/")
+
+baseline_path<-paste0(root,"E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/ISIMIP3b_processed/baseline rh npp/baseline/")
+
+gcam_subregion_mapping <- read.csv(paste0(root,"E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Code/R/GCAM_mapping/gcam2glm_mapping.csv"))
+# read shp file
+# shp_path <- paste0(root, "E/new laptop2/PHD/GCAM/boundary/gcam_boundaries_moirai_3p1_0p5arcmin_wgs84/gcam_boundaries_moirai_3p1_0p5arcmin_wgs84/main_outputs/region_boundaries_moirai_combined_3p1_0p5arcmin.shp")
+# # plot(data_sf)
+# data_sf <- st_read(shp_path)
+
+```
+
+```{r S1 functions}
+##########################################################################
+# Function to process each layer
+process_layer <- function(data_slice, year_label, lon_min, lon_max, lat_min, lat_max) {
+  raster_layer <- raster(t(data_slice), xmn=lon_min, xmx=lon_max, ymn=lat_min, ymx=lat_max, crs=CRS("+proj=longlat +datum=WGS84"))
+  ISIMIP_matrix <- as.data.frame(rasterToPoints(raster_layer)) %>%
+    rename(lon = x, lat = y, value = layer) %>%
+    filter(value < 10e20) %>%
+    mutate(year_label = year_label)
+  
+  return(ISIMIP_matrix)
+}
+
+
+#############################################################################
+# Function to process each year
+process_year_pft_rh_npp <- function(year, data1, data2) {
+  
+  #################
+  # test
+  # year<-years1[1]
+  # data1 <-ISIMIP_gcam_pft
+  # data2 <-ISIMIP_gcam_rh_npp_pft
+  # 
+  
+  ################
+  # Calculate the total for each group in data1
+  data1_2 <- data1 %>%
+    filter(year_label == year) %>%
+    group_by(out_reg_code, out_lu_code, gcam_reg_name, basin_abr) %>%
+    summarise(pft_total = sum(pft * weight * cos(center_lat*pi/180), na.rm = TRUE), .groups = 'drop')
+
+  # Join this back to data2 and calculate the new pft values
+  result <- data2 %>%
+    filter(year_label == year) %>%
+    dplyr::select(-center_lon) %>%  # Exclude 'center_lon' from data2 before joining
+    left_join(data1_2, by = c("out_reg_code", "out_lu_code", "gcam_reg_name", "basin_abr")) %>%
+    mutate(pft_new = (pft * weight * cos(center_lat*pi/180)) / pft_total) %>%
+    mutate(pft_new = ifelse(is.na(pft_new), 0, pft_new)) %>%
+    dplyr::select(-weight, -pft, -pft_total, -center_lat) %>%  # Exclude specific columns after calculations
+    group_by(out_reg_code, out_lu_code, gcam_reg_name, basin_abr) %>%
+    summarise(rh_npp_mean = weighted.mean(rh_npp, pft_new, na.rm = TRUE), .groups = 'drop')
+
+  return(result)
+}
+
+
+
+
+
+# # Function to process each year
+# process_year_npp <- function(year, data) {
+#   data %>%
+#     filter(year_label == year) %>%
+#     group_by(out_reg_code,out_lu_code,gcam_reg_name,basin_abr) %>%
+#     summarise(agg_lu_value = weighted.mean(npp, pft_weight), .groups = 'drop')
+# }
+
+##########################################################################
+# Function to dynamically rename and join data frames
+join_and_rename_pft_rh_npp <- function(data_list, join_keys) {
+  result_df <- data_list[[1]] %>% 
+    rename(!!paste0("rh_npp_mean", 2015) := rh_npp_mean)
+  
+  if (length(data_list) > 1) {
+    for (i in 2:length(data_list)) {
+      year <- 2014 + i  # Adjust based on your actual year naming needs
+      column_name <- paste0("rh_npp_mean", year)
+      
+      # Dynamically rename and join
+      result_df <- result_df %>% 
+        left_join(data_list[[i]] %>% 
+                    rename(!!column_name := rh_npp_mean),
+                  by = join_keys)
+    }
+  }
+  
+  return(result_df)
+}
+
+
+
+##########################################################################
+# Function to process each layer with weighting
+process_layer_with_weighting <- function(data_slices_npp, year_label, lon_min, lon_max, lat_min, lat_max, month_weights) {
+  weighted_data_slices_npp <- list()
+  for (m in 1:length(data_slices_npp)) {
+    # Apply the monthly weight to each data slice
+    weighted_data_slices_npp[[m]] <- data_slices_npp[[m]] * month_weights[m]
+  }
+  # Sum the weighted data slices to get the annual weighted average
+  annual_data_slice <- Reduce("+", weighted_data_slices_npp)
+  
+  raster_layer <- raster(t(annual_data_slice), xmn=lon_min, xmx=lon_max, ymn=lat_min, ymx=lat_max, crs=CRS("+proj=longlat +datum=WGS84"))
+  ISIMIP_matrix <- as.data.frame(rasterToPoints(raster_layer)) %>%
+    rename(lon = x, lat = y, value = layer) %>%
+    filter(value < 10e20) %>%
+    mutate(year_label = year_label)
+  
+  return(ISIMIP_matrix)
+}
+
+
+
+
+# Function to apply pivot wider transformation
+pivot_wider_transform <- function(data, values_from, names_from) {
+  data %>% pivot_wider(values_from = values_from, names_from = names_from)
+}
+
+# Function to filter out rows with any negative values from the 3rd column onward
+filter_negative_values <- function(data) {
+  rows_to_remove <- apply(data[, 3:ncol(data)], 1, function(x) any(x < 0))
+  data[!rows_to_remove, ]
+}
+
+# Function to expand and join with baseline data
+expand_and_join <- function(data, mapping, value_col, year_range) {
+  expanded <- mapping %>%
+    dplyr::select(center_lat, center_lon) %>%
+    expand_grid(year_label = year_range, .) %>%
+    mutate(year_label = as.character(year_label)) %>%
+    arrange(center_lat, center_lon, year_label) %>%
+    left_join(data, by = c("center_lon" = "lon", "center_lat" = "lat", "year_label")) %>%
+    dplyr::select(center_lat, center_lon, year_label, value_col) %>%
+    distinct()
+}
+
+normalize_data <- function(data, baseline, year_label) {
+  # data <- all_ISIMIP_matrices_npp2
+  # baseline<- baseline_npp%>%dplyr::select(-c("rh"))
+  # year_label<-"year_label"
+  
+  data %>%
+    pivot_wider(values_from = value, names_from = year_label) %>%
+    left_join(baseline, by = c("center_lon", "center_lat")) %>%
+    pivot_longer(cols = 3:89, names_to = "year_label", values_to = "value") %>%
+    arrange(center_lat, center_lon, year_label) %>%
+    group_by(center_lon, center_lat) %>%
+    mutate(value = value / value[year_label == "2014"]) %>%
+    ungroup()
+}
+
+prepare_baseline <- function(data, value_col) {
+  data %>%
+    rename(value = {{ value_col }}) %>%
+    dplyr::select(center_lon, center_lat, year_label, value) %>%
+    pivot_wider(values_from = value, names_from = year_label)
+}
+
+
+```
+
+```{r S2 check needed file order num}
+
+rh_npp_pft_dir_path <- paste0(root, "E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/annual_wmean_belowCD/grid/")
+
+
+havenondep <- 0
+
+broad_types<-c("forest","grass","c3crop","c4crop")
+# 1 or 2 or 3
+type_id<- 3
+
+broad_type<-broad_types[type_id]
+
+## in this function I used npp which is same as my above ground code, 
+# however, this var name will not affect the turth that I am reading the rh_npp_pft data
+get_file_paths <- function(have_nondep, type_id, dir_path_npp) {
+  # test
+  # have_nondep<-havenondep
+  # type_id<-type_id
+  # dir_path_npp<-rh_npp_pft_dir_path
+  
+  
+  
+  base_pattern <- "2015soc-from-histsoc.*"
+  type_patterns <- c("evgndltr", "c3grass", "c3crop", "c4crop")  # Assume indices 1, 2, 3 correspond to type_id 1, 2, 3
+  type_suffix <- ifelse(have_nondep, "_nondep.*", "")
+  
+  #classic_gfdl-esm4_w5e5_ssp585_2015soc-from-histsoc_2015co2_npp-dcdcldbdltr_grid_annualy_scale.csv
+  pattern_npp <- paste0(base_pattern, type_suffix, type_patterns[type_id], "_grid_annualy_scale\\.csv$")
+  
+ 
+  npp_files <- list.files(path = dir_path_npp, pattern = pattern_npp, full.names = TRUE)
+ 
+  
+  if (!have_nondep) {
+    npp_files <- npp_files[!grepl("_nondep", npp_files)]
+    
+  }
+  
+  list(npp = npp_files)
+}
+
+###############################################################################################################
+
+# Assuming 'havenondep' and 'type_id' are defined elsewhere in your script
+result_files <- get_file_paths(havenondep, type_id, rh_npp_pft_dir_path)
+
+# Accessing the results
+rh_npp_pft_files <- result_files$npp
+
+print(rh_npp_pft_files)
+
+```
+
+```{r S3 automatically read the file and process npp rh to gcam subregion weight mean}
+rh_npp_pft_dir_path <-
+  paste0(
+    root,
+    "E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/annual_wmean_belowCD/grid/"
+  )
+
+
+havenondep <- 0
+
+broad_types <- c("forest", "grass", "c3crop", "c4crop")
+# 1 or 2 or 3 or 4
+# 1:4
+for (type_id in 1:4) {
+  broad_type <- broad_types[type_id]
+  
+  ## in this function I used npp which is same as my above ground code,
+  # however, this var name will not affect the turth that I am reading the rh_npp_pft data
+  get_file_paths <- function(have_nondep, type_id, dir_path_npp) {
+    # test
+    # have_nondep<-havenondep
+    # type_id<-type_id
+    # dir_path_npp<-rh_npp_pft_dir_path
+    
+    
+    
+    base_pattern <- "2015soc-from-histsoc.*"
+    type_patterns <-
+      c("evgndltr", "c3grass", "c3crop", "c4crop")  # Assume indices 1, 2, 3 correspond to type_id 1, 2, 3
+    type_suffix <- ifelse(have_nondep, "_nondep.*", "")
+    
+    #classic_gfdl-esm4_w5e5_ssp585_2015soc-from-histsoc_2015co2_npp-dcdcldbdltr_grid_annualy_scale.csv
+    pattern_npp <-
+      paste0(base_pattern,
+             type_suffix,
+             type_patterns[type_id],
+             "_grid_annualy_scale\\.csv$")
+    
+    
+    npp_files <-
+      list.files(path = dir_path_npp,
+                 pattern = pattern_npp,
+                 full.names = TRUE)
+    
+    
+    if (!have_nondep) {
+      npp_files <- npp_files[!grepl("_nondep", npp_files)]
+      
+    }
+    
+    list(npp = npp_files)
+  }
+  
+  ###############################################################################################################
+  
+  # Assuming 'havenondep' and 'type_id' are defined elsewhere in your script
+  result_files <-
+    get_file_paths(havenondep, type_id, rh_npp_pft_dir_path)
+  
+  # Accessing the results
+  rh_npp_pft_files <- result_files$npp
+  
+  print(rh_npp_pft_files)
+  ###########################################
+  # order_list<-c(4,4,4,4)
+  # order<-order_list[type_id]
+  for (data_idx in c(3,5)) {
+    # for(data_idx in 1:length(rh_npp_pft_files)) {
+    # for(data_idx in 5:9) {
+    # data_idx <- 1
+    
+    # Record the start time
+    start_time <- Sys.time()
+    
+    in_rh_npp_pft <- rh_npp_pft_files[data_idx]
+    rh_npp_pft_file_name <- basename(in_rh_npp_pft)
+    
+    # Use a regular expression to remove the trailing part of the file name, starting from "_global"
+    # This will keep the part of the file name before "_global"
+    base_name_part <- sub("_npp.*", "", rh_npp_pft_file_name)
+    
+    #######################################################################################
+    
+    
+    # Function to handle reading from csv files
+    read_csv_data <-
+      function(base_name_part,
+               dir_path,
+               orther_types,
+               suffix) {
+        nc_files <- list()
+        data <- list()
+        #classic_gfdl-esm4_w5e5_ssp585_2015soc-from-histsoc_2015co2_npp-dcddrybdltr_grid_annualy_scale.csv
+        for (type in orther_types) {
+          file_path <-
+            file.path(
+              dir_path,
+              paste0(
+                base_name_part,
+                "_",
+                suffix,
+                "-",
+                type,
+                "_grid_annualy_scale.csv"
+              )
+            )
+          
+          data[[type]] <- read.csv(file_path)
+          
+        }
+        
+        return(data)
+      }
+    
+    # Helper function to clean up environment
+    cleanup_environment <- function(files) {
+      lapply(files, rm, envir = globalenv())
+      gc()
+    }
+    
+    #############################################
+    if (type_id == 1) {
+      orther_type <-
+        c("evgndltr",
+          "dcdndltr",
+          "evgbdltr",
+          "dcdcldbdltr",
+          "dcddrybdltr")
+      rh_npp_pft_data <-
+        read_csv_data(base_name_part, rh_npp_pft_dir_path, orther_type, "npp")
+      
+      
+      npp_all <- rh_npp_pft_data$dcdndltr %>%
+        distinct() %>%
+        rename(rh_npp1 = rh_npp, pft1 = pft) %>%
+        left_join(
+          rh_npp_pft_data$dcdndltr %>%
+            rename(rh_npp2 = rh_npp, pft2 = pft),
+          by = c(
+            "out_reg_code",
+            "out_lu_code",
+            "center_lon",
+            "center_lat",
+            "year_label",
+            "gcam_reg_name",
+            "basin_abr",
+            "weight"
+          )
+        ) %>%
+        left_join(
+          rh_npp_pft_data$evgbdltr %>%
+            rename(rh_npp3 = rh_npp, pft3 = pft),
+          by = c(
+            "out_reg_code",
+            "out_lu_code",
+            "center_lon",
+            "center_lat",
+            "year_label",
+            "gcam_reg_name",
+            "basin_abr",
+            "weight"
+          )
+        ) %>%
+        left_join(
+          rh_npp_pft_data$dcdcldbdltr %>%
+            rename(rh_npp4 = rh_npp, pft4 = pft),
+          by = c(
+            "out_reg_code",
+            "out_lu_code",
+            "center_lon",
+            "center_lat",
+            "year_label",
+            "gcam_reg_name",
+            "basin_abr",
+            "weight"
+          )
+        ) %>%
+        left_join(
+          rh_npp_pft_data$dcddrybdltr %>%
+            rename(rh_npp5 = rh_npp, pft5 = pft),
+          by = c(
+            "out_reg_code",
+            "out_lu_code",
+            "center_lon",
+            "center_lat",
+            "year_label",
+            "gcam_reg_name",
+            "basin_abr",
+            "weight"
+          )
+        )
+      
+      ISIMIP_gcam_rh_npp_pft <- npp_all %>%
+        mutate(
+          pft1  = ifelse(is.na(rh_npp1), 0, pft1),
+          pft2  = ifelse(is.na(rh_npp2), 0, pft2),
+          pft3  = ifelse(is.na(rh_npp3), 0, pft3),
+          pft4  = ifelse(is.na(rh_npp4), 0, pft4),
+          pft5  = ifelse(is.na(rh_npp5), 0, pft5)
+        ) %>%
+        mutate(
+          rh_npp1  = ifelse(is.na(rh_npp1), 0, rh_npp1),
+          rh_npp2  = ifelse(is.na(rh_npp2), 0, rh_npp2),
+          rh_npp3  = ifelse(is.na(rh_npp3), 0, rh_npp3),
+          rh_npp4  = ifelse(is.na(rh_npp4), 0, rh_npp4),
+          rh_npp5  = ifelse(is.na(rh_npp5), 0, rh_npp5)
+        ) %>%
+        mutate(
+          rh_npp_mean = (
+            pft1 * rh_npp1 + pft2 * rh_npp2 + pft3 * rh_npp3 + pft4 * rh_npp4 + pft5 *
+              rh_npp5
+          ) / (pft1 + pft2 + pft3 + pft4 + pft5)
+        ) %>%
+        mutate(pft_total = pft1 + pft2 + pft3 + pft4 + pft5) %>%
+        dplyr::select(
+          "out_reg_code",
+          "out_lu_code",
+          "center_lon",
+          "center_lat",
+          "year_label",
+          "gcam_reg_name",
+          "basin_abr",
+          "weight",
+          "rh_npp_mean",
+          "pft_total"
+        ) %>%
+        rename(rh_npp = rh_npp_mean, pft = pft_total)
+      
+      
+      
+    } else if (type_id == 2) {
+      orther_type <- c("c3grass", "c4grass")
+      rh_npp_pft_data <-
+        read_csv_data(base_name_part, rh_npp_pft_dir_path, orther_type, "npp")
+      
+      ##############################################
+      npp_all <- rh_npp_pft_data$c3grass %>%
+        distinct() %>%
+        rename(rh_npp1 = rh_npp, pft1 = pft) %>%
+        left_join(
+          rh_npp_pft_data$c4grass %>%
+            rename(rh_npp2 = rh_npp, pft2 = pft),
+          by = c(
+            "out_reg_code",
+            "out_lu_code",
+            "center_lon",
+            "center_lat",
+            "year_label",
+            "gcam_reg_name",
+            "basin_abr",
+            "weight"
+          )
+        )
+      
+      
+      ISIMIP_gcam_rh_npp_pft <- npp_all %>%
+        mutate(pft1  = ifelse(is.na(rh_npp1), 0, pft1),
+               pft2  = ifelse(is.na(rh_npp2), 0, pft2)) %>%
+        mutate(
+          rh_npp1  = ifelse(is.na(rh_npp1), 0, rh_npp1),
+          rh_npp2  = ifelse(is.na(rh_npp2), 0, rh_npp2)
+        ) %>%
+        mutate(rh_npp_mean = (pft1 * rh_npp1 + pft2 * rh_npp2) / (pft1 + pft2)) %>%
+        mutate(pft_total = pft1 + pft2) %>%
+        dplyr::select(
+          "out_reg_code",
+          "out_lu_code",
+          "center_lon",
+          "center_lat",
+          "year_label",
+          "gcam_reg_name",
+          "basin_abr",
+          "weight",
+          "rh_npp_mean",
+          "pft_total"
+        ) %>%
+        rename(rh_npp = rh_npp_mean, pft = pft_total)
+      
+      
+    } else if (type_id == 3) {
+      orther_type <- c("c3crop")
+      rh_npp_pft_data <-
+        read_csv_data(base_name_part, rh_npp_pft_dir_path, orther_type, "npp")
+      
+      
+      ##############################################
+      npp_all <- rh_npp_pft_data$c3crop %>%
+        distinct() %>%
+        rename(rh_npp1 = rh_npp, pft1 = pft)
+      ISIMIP_gcam_rh_npp_pft <- npp_all %>%
+        mutate(pft1  = ifelse(is.na(rh_npp1), 0, pft1)) %>%
+        mutate(rh_npp1  = ifelse(is.na(rh_npp1), 0, rh_npp1)) %>%
+        mutate(rh_npp_mean = (pft1 * rh_npp1) / (pft1)) %>%
+        mutate(pft_total = pft1) %>%
+        dplyr::select(
+          "out_reg_code",
+          "out_lu_code",
+          "center_lon",
+          "center_lat",
+          "year_label",
+          "gcam_reg_name",
+          "basin_abr",
+          "weight",
+          "rh_npp_mean",
+          "pft_total"
+        ) %>%
+        rename(rh_npp = rh_npp_mean, pft = pft_total)
+      
+    } else if (type_id == 4) {
+      orther_type <- c("c4crop")
+      rh_npp_pft_data <-
+        read_csv_data(base_name_part, rh_npp_pft_dir_path, orther_type, "npp")
+      
+      
+      ##############################################
+      npp_all <- rh_npp_pft_data$c4crop %>%
+        distinct() %>%
+        rename(rh_npp1 = rh_npp, pft1 = pft)
+      ISIMIP_gcam_rh_npp_pft <- npp_all %>%
+        mutate(pft1  = ifelse(is.na(rh_npp1), 0, pft1)) %>%
+        mutate(rh_npp1  = ifelse(is.na(rh_npp1), 0, rh_npp1)) %>%
+        mutate(rh_npp_mean = (pft1 * rh_npp1) / (pft1)) %>%
+        mutate(pft_total = pft1) %>%
+        dplyr::select(
+          "out_reg_code",
+          "out_lu_code",
+          "center_lon",
+          "center_lat",
+          "year_label",
+          "gcam_reg_name",
+          "basin_abr",
+          "weight",
+          "rh_npp_mean",
+          "pft_total"
+        ) %>%
+        rename(rh_npp = rh_npp_mean, pft = pft_total)
+      
+    }
+    
+    
+    
+    
+    
+    #######################################################################################
+    
+    #######################
+    
+    # Generate a vector of years as labels
+    years1 <- as.character(seq(2015, 2100, length.out = 86))
+    
+    
+    ISIMIP_gcam_rh_npp <-
+      dplyr::select(ISIMIP_gcam_rh_npp_pft,-c("pft"))
+    
+    ISIMIP_gcam_pft <-
+      dplyr::select(ISIMIP_gcam_rh_npp_pft,-c("rh_npp"))
+    
+    
+    ISIMIP_gcam_list_pft_rh_npp <- data.frame()
+    # Use lapply to apply the function to each year
+    ISIMIP_gcam_list_pft_rh_npp <-
+      lapply(years1,
+             process_year_pft_rh_npp,
+             data1 = ISIMIP_gcam_pft,
+             data2 = ISIMIP_gcam_rh_npp_pft)
+    
+    
+    # ISIMIP_gcam_list_pft <- lapply(years1, process_year, data = ISIMIP_gcam_pft)
+    #############################################
+    # df2<-df%>%
+    #   summarise(sum=mean(rh_npp_mean,na.rm = TRUE))
+    #
+    
+    
+    #############################################
+    # First, rename the 'agg_lu_value' column in each data frame with the corresponding year
+    years <- seq(2015, 2100, length.out = 86)
+    names(ISIMIP_gcam_list_pft_rh_npp) <-
+      years  # Naming the list elements for reference
+    print("1")
+    
+    # Specify join keys as a vector
+    join_keys <-
+      c("out_reg_code",
+        "out_lu_code",
+        "gcam_reg_name",
+        "basin_abr")
+    
+    # Apply the function
+    ISIMIP_gcam_combined_pft_rh_npp <-
+      join_and_rename_pft_rh_npp(ISIMIP_gcam_list_pft_rh_npp, join_keys) %>%
+      #clean data_frame
+      mutate(across(everything(), ~ replace(., is.infinite(.), NA)))
+    
+    
+    # save proceed data
+    write.csv(
+      ISIMIP_gcam_combined_pft_rh_npp,
+      paste0(
+        out_main_path,
+        "/annual_wmean_belowCD/region/",
+        base_name_part,
+        "_regional_scale_",
+        broad_type,
+        ".csv"
+      ),
+      row.names = FALSE
+    )
+    #
+    # # Plot
+    
+    # Record the end time
+    end_time <- Sys.time()
+    
+    # Calculate the duration and print it
+    duration <- end_time - start_time
+    print(duration)
+    
+    
+  }
+}
+
+```
+
+```{r S4 check npp_rh}
+
+# check_belowCD_long <- ISIMIP_gcam_combined_pft_rh_npp%>%
+#   pivot_longer(
+#     cols = starts_with("rh_npp_mean"),
+#     names_to = "year",
+#     values_to = "value",
+#     names_prefix = "rh_npp_mean"
+#   )%>%
+#   mutate(year = as.numeric(year))%>%
+#   na.omit()
+# 
+#   # Create a line plot for each region
+# p<-ggplot(check_belowCD_long, aes(x = as.numeric(year), y = value, group = basin_abr, color = basin_abr)) +
+#   geom_line() +
+#   labs(title = "Line Plot of Each Region Over Years",
+#        x = "Year",
+#        y = "Value",
+#        color = "Region") +
+#   theme_minimal()
+# 
+# ## save 
+# 
+# # Save the plot as an SVG file
+# ggsave(paste0(fig_save_path,"/",desired_name_part,"_bCD.svg"), plot = p, width = 20, height = 20, units = "in")
+# 
+# 
+# ####################################################################
+# 
+# 
+# check_belowCD_long_mean <- ISIMIP_gcam_combined_pft_rh_npp%>%
+# dplyr::select(5:ncol(.)) %>%  
+#   summarise_all(~ mean(., na.rm = TRUE))%>%
+#   pivot_longer(
+#     cols = starts_with("rh_npp_mean"),
+#     names_to = "year",
+#     values_to = "value",
+#     names_prefix = "rh_npp_mean"
+#   )%>%
+#   mutate(year = as.numeric(year))%>%
+#   na.omit()
+# 
+# 
+# p2<-ggplot(check_belowCD_long_mean, aes(x = as.numeric(year), y = value)) +
+#   geom_line() +
+#   labs(title = "Line Plot of Each Region Over Years",
+#        x = "Year",
+#        y = "Value") +
+#   theme_minimal()
+# 
+# ## save 
+# 
+# # Save the plot as an SVG file
+# ggsave(paste0(fig_save_path,"/",desired_name_part,"_bCD_mean.svg"), plot = p2, width = 20, height = 20, units = "in")
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

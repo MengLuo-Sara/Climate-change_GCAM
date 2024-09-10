@@ -1,0 +1,492 @@
+---
+title: "update_GCAM_CB_table"
+author: "Meng Luo"
+date: "2024-04-16"
+output: html_document
+---
+
+## content
+
+S0 set path and install package
+S1 read annual scaler
+S2_1 only for agb: estimate the 5 year mean for future period 2020:5:2100
+S2_2 only for bgb: estimate the 5 year mean for future period 2020:5:2100
+S2 estimate the 5 year mean for both agb and bgb in future period 2020:5:2100
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+```{r S0 set path and install package}
+# require(devtools)
+#Please use this in console if needed: install_github('JGCRI/rgcam', build_vignettes=TRUE, force =TRUE)
+
+
+library(tidyverse)
+library(tidyr)
+library(dplyr)
+library(patchwork)
+library(sf)
+library(svglite)
+library(cowplot)
+library(gridExtra)
+library(ggthemes)
+library(scales) # for the percentage format on y-axis
+library(RColorBrewer)
+
+
+library(ncdf4)
+library(raster)
+library(ggplot2)
+library(viridis)
+library(stringr)
+
+
+library(purrr)
+
+
+
+## desktop path
+# root <- "O:/"
+## new laptop path
+root <- "D:/"
+## new laptop path
+fig_save_path <- paste0("D:/E/new laptop2/PHD/my_2024_1_manuscript/Figure&table/figure/")
+
+
+in_agb_scaler_path<- paste0(root,"E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/annual_wmean_aboveCD/region/")
+
+in_bgb_scaler_path<- paste0(root,"E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/annual_wmean_belowCD/region/")
+
+out_agb_scaler_path<- paste0(root,"E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/annual_wmean_aboveCD/region_5ymean/")
+
+out_bgb_scaler_path<- paste0(root,"E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/annual_wmean_belowCD/region_5ymean/")
+
+
+
+```
+
+
+```{r S1 read annual scaler}
+
+agb_files <- list.files(path = in_agb_scaler_path, pattern = ".*\\.csv$", full.names = TRUE)
+
+
+bgb_files <- list.files(path = in_bgb_scaler_path, pattern = ".*\\.csv$", full.names = TRUE)
+
+print(agb_files)
+print(bgb_files)
+```
+
+
+```{r S2_1 only for agb: estimate the 5 year mean for future period 2020:5:2100}
+# for(data_idx in 1:length(agb_files)) {
+for(data_idx in c(9:12,17:20)) {
+  
+  # data_idx<-5
+   start_time <- Sys.time()
+  
+   in_agb_file <- agb_files[data_idx]
+  
+   
+   agb_annual<- read.csv(in_agb_file)
+  
+   
+   agb_name <- basename(in_agb_file)
+   agb_base_name_part <- sub("\\.csv", "", agb_name)
+  
+   
+  
+  
+   
+   
+## agb   
+   # Function to calculate 5-year mean for a specified start year
+calculate_period_mean <- function(df, start_year,varname) {
+  # Create column names for the years in the range
+  year_columns <- paste0(varname, start_year:(start_year + 4))
+  # Calculate the mean across the specified columns
+  rowMeans(df[year_columns], na.rm = TRUE)
+}
+
+calculate_period_mean2100 <- function(df, start_year,varname) {
+  # Create column names for the years in the range
+  year_columns <- paste0(varname, start_year:(start_year + 2))
+  # Calculate the mean across the specified columns
+  rowMeans(df[year_columns], na.rm = TRUE)
+}
+
+
+
+
+
+## Using mutate() to calculate the 5-year averages
+# agb
+agb_5yearly <- agb_annual %>%
+  mutate(
+    mean_2020 = calculate_period_mean(., 2018,"npp_mean"),
+    mean_2025 = calculate_period_mean(., 2022,"npp_mean"),
+    mean_2030 = calculate_period_mean(., 2028,"npp_mean"),
+    mean_2035 = calculate_period_mean(., 2032,"npp_mean"),
+    mean_2040 = calculate_period_mean(., 2038,"npp_mean"),
+    mean_2045 = calculate_period_mean(., 2042,"npp_mean"),
+    mean_2050 = calculate_period_mean(., 2048,"npp_mean"),
+    mean_2055 = calculate_period_mean(., 2052,"npp_mean"),
+    mean_2060 = calculate_period_mean(., 2058,"npp_mean"),
+    mean_2065 = calculate_period_mean(., 2062,"npp_mean"),
+    mean_2070 = calculate_period_mean(., 2068,"npp_mean"),
+    mean_2075 = calculate_period_mean(., 2072,"npp_mean"),
+    mean_2080 = calculate_period_mean(., 2078,"npp_mean"),
+    mean_2085 = calculate_period_mean(., 2082,"npp_mean"),
+    mean_2090 = calculate_period_mean(., 2088,"npp_mean"),
+    mean_2095 = calculate_period_mean(., 2092,"npp_mean"),
+    mean_2100 = calculate_period_mean2100(., 2098,"npp_mean")
+  )%>%
+  dplyr::select(-starts_with("npp_"))
+
+
+
+## filling the NA row with the region mean #################################################
+
+## estimate the regional mean
+agb_5yearly_region_mean<-agb_5yearly%>%
+  group_by(gcam_reg_name)%>%
+  summarise(across(starts_with("mean_2"), ~mean(., na.rm = TRUE))) %>%
+  ungroup()%>%
+  pivot_longer(cols = mean_2020:mean_2100,names_to = "year", values_to = "region_mean_scaler")
+
+
+
+
+# after checking the regional mean, I found no region's mean value is na
+# thus I can do the below process
+## replace the NA value with regional mean
+
+agb_5yearly_full<-agb_5yearly %>%
+  pivot_longer(cols = mean_2020:mean_2100,names_to = "year", values_to = "mean_scaler")%>%
+  left_join(agb_5yearly_region_mean, by =c("gcam_reg_name","year"))%>%
+  mutate(mean_scaler = ifelse(is.na(mean_scaler), region_mean_scaler, mean_scaler))%>%
+  dplyr::select(-c("region_mean_scaler"))
+
+
+  
+  
+ #########################################################################
+ # save proceed data
+  write.csv(
+    agb_5yearly_full,
+    paste0(
+      out_agb_scaler_path,
+       agb_base_name_part,
+      "_5y.csv"
+    ),
+    row.names = FALSE
+  )
+
+
+   
+ #####################################################################  
+  # Record the end time
+  end_time <- Sys.time()
+  
+  # Calculate the duration and print it
+  duration <- end_time - start_time
+  print(duration)
+  
+}
+
+
+```
+
+
+
+
+```{r S2_2 only for bgb: estimate the 5 year mean for future period 2020:5:2100  }
+# for(data_idx in 1:length(agb_files)) {
+for(data_idx in c(9:12,17:20)) {
+  
+  # data_idx<-5
+   start_time <- Sys.time()
+  
+   
+   in_bgb_file <- bgb_files[data_idx]
+   
+  
+   bgb_annual<- read.csv(in_bgb_file)
+   
+  
+  
+  
+   
+   bgb_name <- basename(in_bgb_file)
+   bgb_base_name_part <- sub("\\.csv", "", bgb_name)
+  
+   
+   
+## agb   
+   # Function to calculate 5-year mean for a specified start year
+calculate_period_mean <- function(df, start_year,varname) {
+  # Create column names for the years in the range
+  year_columns <- paste0(varname, start_year:(start_year + 4))
+  # Calculate the mean across the specified columns
+  rowMeans(df[year_columns], na.rm = TRUE)
+}
+
+calculate_period_mean2100 <- function(df, start_year,varname) {
+  # Create column names for the years in the range
+  year_columns <- paste0(varname, start_year:(start_year + 2))
+  # Calculate the mean across the specified columns
+  rowMeans(df[year_columns], na.rm = TRUE)
+}
+
+
+
+
+
+## Using mutate() to calculate the 5-year averages
+
+
+# bgb
+bgb_5yearly <- bgb_annual %>%
+  mutate(
+    mean_2020 = calculate_period_mean(., 2018,"rh_npp_mean"),
+    mean_2025 = calculate_period_mean(., 2022,"rh_npp_mean"),
+    mean_2030 = calculate_period_mean(., 2028,"rh_npp_mean"),
+    mean_2035 = calculate_period_mean(., 2032,"rh_npp_mean"),
+    mean_2040 = calculate_period_mean(., 2038,"rh_npp_mean"),
+    mean_2045 = calculate_period_mean(., 2042,"rh_npp_mean"),
+    mean_2050 = calculate_period_mean(., 2048,"rh_npp_mean"),
+    mean_2055 = calculate_period_mean(., 2052,"rh_npp_mean"),
+    mean_2060 = calculate_period_mean(., 2058,"rh_npp_mean"),
+    mean_2065 = calculate_period_mean(., 2062,"rh_npp_mean"),
+    mean_2070 = calculate_period_mean(., 2068,"rh_npp_mean"),
+    mean_2075 = calculate_period_mean(., 2072,"rh_npp_mean"),
+    mean_2080 = calculate_period_mean(., 2078,"rh_npp_mean"),
+    mean_2085 = calculate_period_mean(., 2082,"rh_npp_mean"),
+    mean_2090 = calculate_period_mean(., 2088,"rh_npp_mean"),
+    mean_2095 = calculate_period_mean(., 2092,"rh_npp_mean"),
+    mean_2100 = calculate_period_mean2100(., 2098,"rh_npp_mean")
+  )%>%
+  ## better change the bgb fil to use rh_npp_ instead of npp_
+  dplyr::select(-starts_with("rh_npp_"))
+
+
+## filling the NA row with the region mean #################################################
+
+
+bgb_5yearly_region_mean<-bgb_5yearly%>%
+  group_by(gcam_reg_name)%>%
+  summarise(across(starts_with("mean_2"), ~mean(., na.rm = TRUE))) %>%
+  ungroup()%>%
+  pivot_longer(cols = mean_2020:mean_2100,names_to = "year", values_to = "region_mean_scaler")
+
+
+# after checking the regional mean, I found no region's mean value is na
+# thus I can do the below process
+## replace the NA value with regional mean
+
+
+
+bgb_5yearly_full<-bgb_5yearly %>%
+  pivot_longer(cols = mean_2020:mean_2100,names_to = "year", values_to = "mean_scaler")%>%
+  left_join(bgb_5yearly_region_mean, by =c("gcam_reg_name","year"))%>%
+  mutate(mean_scaler = ifelse(is.na(mean_scaler), region_mean_scaler, mean_scaler))%>%
+  dplyr::select(-c("region_mean_scaler"))
+  
+  
+ #########################################################################
+ # save proceed data
+
+
+ write.csv(
+    bgb_5yearly_full,
+    paste0(
+      out_bgb_scaler_path,
+       bgb_base_name_part,
+      "_5y.csv"
+    ),
+    row.names = FALSE
+  )
+
+
+   
+ #####################################################################  
+  # Record the end time
+  end_time <- Sys.time()
+  
+  # Calculate the duration and print it
+  duration <- end_time - start_time
+  print(duration)
+  
+}
+
+
+```
+
+
+```{r S2 estimate the 5 year mean for both agb and bgb in future period 2020:5:2100}
+# # for(data_idx in 1:length(agb_files)) {
+# for(data_idx in 1:4) {
+#   
+#   # data_idx<-5
+#    start_time <- Sys.time()
+#   
+#    in_agb_file <- agb_files[data_idx]
+#    in_bgb_file <- bgb_files[data_idx]
+#    
+#    agb_annual<- read.csv(in_agb_file)
+#    bgb_annual<- read.csv(in_bgb_file)
+#    
+#    agb_name <- basename(in_agb_file)
+#    agb_base_name_part <- sub("\\.csv", "", agb_name)
+#   
+#    
+#    bgb_name <- basename(in_bgb_file)
+#    bgb_base_name_part <- sub("\\.csv", "", bgb_name)
+#   
+#    
+#    
+# ## agb   
+#    # Function to calculate 5-year mean for a specified start year
+# calculate_period_mean <- function(df, start_year,varname) {
+#   # Create column names for the years in the range
+#   year_columns <- paste0(varname, start_year:(start_year + 4))
+#   # Calculate the mean across the specified columns
+#   rowMeans(df[year_columns], na.rm = TRUE)
+# }
+# 
+# calculate_period_mean2100 <- function(df, start_year,varname) {
+#   # Create column names for the years in the range
+#   year_columns <- paste0(varname, start_year:(start_year + 2))
+#   # Calculate the mean across the specified columns
+#   rowMeans(df[year_columns], na.rm = TRUE)
+# }
+# 
+# 
+# 
+# 
+# 
+# ## Using mutate() to calculate the 5-year averages
+# # agb
+# agb_5yearly <- agb_annual %>%
+#   mutate(
+#     mean_2020 = calculate_period_mean(., 2018,"npp_mean"),
+#     mean_2025 = calculate_period_mean(., 2022,"npp_mean"),
+#     mean_2030 = calculate_period_mean(., 2028,"npp_mean"),
+#     mean_2035 = calculate_period_mean(., 2032,"npp_mean"),
+#     mean_2040 = calculate_period_mean(., 2038,"npp_mean"),
+#     mean_2045 = calculate_period_mean(., 2042,"npp_mean"),
+#     mean_2050 = calculate_period_mean(., 2048,"npp_mean"),
+#     mean_2055 = calculate_period_mean(., 2052,"npp_mean"),
+#     mean_2060 = calculate_period_mean(., 2058,"npp_mean"),
+#     mean_2065 = calculate_period_mean(., 2062,"npp_mean"),
+#     mean_2070 = calculate_period_mean(., 2068,"npp_mean"),
+#     mean_2075 = calculate_period_mean(., 2072,"npp_mean"),
+#     mean_2080 = calculate_period_mean(., 2078,"npp_mean"),
+#     mean_2085 = calculate_period_mean(., 2082,"npp_mean"),
+#     mean_2090 = calculate_period_mean(., 2088,"npp_mean"),
+#     mean_2095 = calculate_period_mean(., 2092,"npp_mean"),
+#     mean_2100 = calculate_period_mean2100(., 2098,"npp_mean")
+#   )%>%
+#   dplyr::select(-starts_with("npp_"))
+# 
+# # bgb
+# bgb_5yearly <- bgb_annual %>%
+#   mutate(
+#     mean_2020 = calculate_period_mean(., 2018,"rh_npp_mean"),
+#     mean_2025 = calculate_period_mean(., 2022,"rh_npp_mean"),
+#     mean_2030 = calculate_period_mean(., 2028,"rh_npp_mean"),
+#     mean_2035 = calculate_period_mean(., 2032,"rh_npp_mean"),
+#     mean_2040 = calculate_period_mean(., 2038,"rh_npp_mean"),
+#     mean_2045 = calculate_period_mean(., 2042,"rh_npp_mean"),
+#     mean_2050 = calculate_period_mean(., 2048,"rh_npp_mean"),
+#     mean_2055 = calculate_period_mean(., 2052,"rh_npp_mean"),
+#     mean_2060 = calculate_period_mean(., 2058,"rh_npp_mean"),
+#     mean_2065 = calculate_period_mean(., 2062,"rh_npp_mean"),
+#     mean_2070 = calculate_period_mean(., 2068,"rh_npp_mean"),
+#     mean_2075 = calculate_period_mean(., 2072,"rh_npp_mean"),
+#     mean_2080 = calculate_period_mean(., 2078,"rh_npp_mean"),
+#     mean_2085 = calculate_period_mean(., 2082,"rh_npp_mean"),
+#     mean_2090 = calculate_period_mean(., 2088,"rh_npp_mean"),
+#     mean_2095 = calculate_period_mean(., 2092,"rh_npp_mean"),
+#     mean_2100 = calculate_period_mean2100(., 2098,"rh_npp_mean")
+#   )%>%
+#   ## better change the bgb fil to use rh_npp_ instead of npp_
+#   dplyr::select(-starts_with("rh_npp_"))
+# 
+# 
+# ## filling the NA row with the region mean #################################################
+# 
+# ## estimate the regional mean
+# agb_5yearly_region_mean<-agb_5yearly%>%
+#   group_by(gcam_reg_name)%>%
+#   summarise(across(starts_with("mean_2"), ~mean(., na.rm = TRUE))) %>%
+#   ungroup()%>%
+#   pivot_longer(cols = mean_2020:mean_2100,names_to = "year", values_to = "region_mean_scaler")
+# 
+# bgb_5yearly_region_mean<-bgb_5yearly%>%
+#   group_by(gcam_reg_name)%>%
+#   summarise(across(starts_with("mean_2"), ~mean(., na.rm = TRUE))) %>%
+#   ungroup()%>%
+#   pivot_longer(cols = mean_2020:mean_2100,names_to = "year", values_to = "region_mean_scaler")
+# 
+# 
+# # after checking the regional mean, I found no region's mean value is na
+# # thus I can do the below process
+# ## replace the NA value with regional mean
+# 
+# agb_5yearly_full<-agb_5yearly %>%
+#   pivot_longer(cols = mean_2020:mean_2100,names_to = "year", values_to = "mean_scaler")%>%
+#   left_join(agb_5yearly_region_mean, by =c("gcam_reg_name","year"))%>%
+#   mutate(mean_scaler = ifelse(is.na(mean_scaler), region_mean_scaler, mean_scaler))%>%
+#   dplyr::select(-c("region_mean_scaler"))
+# 
+# bgb_5yearly_full<-bgb_5yearly %>%
+#   pivot_longer(cols = mean_2020:mean_2100,names_to = "year", values_to = "mean_scaler")%>%
+#   left_join(bgb_5yearly_region_mean, by =c("gcam_reg_name","year"))%>%
+#   mutate(mean_scaler = ifelse(is.na(mean_scaler), region_mean_scaler, mean_scaler))%>%
+#   dplyr::select(-c("region_mean_scaler"))
+#   
+#   
+#  #########################################################################
+#  # save proceed data
+#   write.csv(
+#     agb_5yearly_full,
+#     paste0(
+#       out_agb_scaler_path,
+#        agb_base_name_part,
+#       "_5y.csv"
+#     ),
+#     row.names = FALSE
+#   )
+# 
+#  write.csv(
+#     bgb_5yearly_full,
+#     paste0(
+#       out_bgb_scaler_path,
+#        bgb_base_name_part,
+#       "_5y.csv"
+#     ),
+#     row.names = FALSE
+#   )
+# 
+# 
+#    
+#  #####################################################################  
+#   # Record the end time
+#   end_time <- Sys.time()
+#   
+#   # Calculate the duration and print it
+#   duration <- end_time - start_time
+#   print(duration)
+#   
+# }
+# 
+
+```

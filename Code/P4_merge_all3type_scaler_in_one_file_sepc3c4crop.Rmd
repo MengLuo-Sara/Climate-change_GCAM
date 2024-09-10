@@ -1,0 +1,475 @@
+---
+title: "update_GCAM_CB_table"
+author: "Meng Luo"
+date: "2024-04-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+```{r S0 set path and install package}
+# require(devtools)
+#Please use this in console if needed: install_github('JGCRI/rgcam', build_vignettes=TRUE, force =TRUE)
+
+
+library(tidyverse)
+library(tidyr)
+library(dplyr)
+library(patchwork)
+library(sf)
+library(svglite)
+library(cowplot)
+library(gridExtra)
+library(ggthemes)
+library(scales) # for the percentage format on y-axis
+library(RColorBrewer)
+
+
+library(ncdf4)
+library(raster)
+library(ggplot2)
+library(viridis)
+library(stringr)
+
+
+library(purrr)
+
+
+
+## chenlab desktop
+root <- "O:/"
+## new laptop
+root <- "D:/"
+
+
+gcam_carbon_path<- paste0(root,"E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/GCAM_carbondensity/")
+
+
+in_agb_scaler_path<- paste0(root,"E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/annual_wmean_aboveCD/region_5ymean/")
+
+in_bgb_scaler_path<- paste0(root,"E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/annual_wmean_belowCD/region_5ymean/")
+
+out_agb_scaler_path<- paste0(root,"E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/annual_wmean_aboveCD/region_5ymean_alltypes/")
+
+out_bgb_scaler_path<- paste0(root,"E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/annual_wmean_belowCD/region_5ymean_alltypes/")
+
+
+#region_5ymean_alltypes
+
+# scenario<-c("ssp585","ssp126","ssp370")
+# experiment <-c()
+# 
+# 
+# 
+#   crop_agb_scale <- read.csv(paste0())
+#   forest_agb_scale <- read.csv(paste0())
+#   grass_abg_scale <- read.csv(paste0())
+#   
+#   crop_bgb_scale <- read.csv(paste0())
+#   forest_bgb_scale <- read.csv(paste0())
+#   grass_bbg_scale <- read.csv(paste0())
+
+```
+
+```{r S1 read the carbon scaler}
+
+havenondep <-0
+
+if (havenondep == 1) {
+
+
+# all include nondep
+
+agb_files <- list.files(path = in_agb_scaler_path, pattern = "2015soc-from-histsoc.*_nondep.*forest.*\\.csv$", full.names = TRUE)
+bgb_files <- list.files(path = in_bgb_scaler_path, pattern = "2015soc-from-histsoc.*_nondep.*forest.*\\.csv$", full.names = TRUE)
+
+
+
+} else {
+
+# all do not include nondep
+# Step 1: Get all files including "2015soc-from-histsoc"
+initial_agb_files <- list.files(path = in_agb_scaler_path, pattern = "2015soc-from-histsoc.*forest.*\\.csv$", full.names = TRUE)
+initial_bgb_files <- list.files(path = in_bgb_scaler_path, pattern = "2015soc-from-histsoc.*forest.*\\.csv$", full.names = TRUE)
+
+# Step 2: Exclude files containing "_nondep"
+agb_files <- initial_agb_files[!grepl("_nondep", initial_agb_files)]
+bgb_files <- initial_bgb_files[!grepl("_nondep", initial_bgb_files)]
+
+}
+
+print(agb_files)
+print(bgb_files)
+```
+
+```{r S2 functions}
+####################################
+read_single_csv <- function(directory, file_pattern) {
+  # List all files in the directory that match the pattern
+  file_list <- list.files(path = directory, pattern = paste0("^", file_pattern, ".*\\.csv$"), full.names = TRUE)
+  
+  # Check the number of files found and handle accordingly
+  if (length(file_list) == 0) {
+    stop("No files found with the specified pattern")
+  } else if (length(file_list) > 1) {
+    stop("More than one file found, make sure to specify the pattern more precisely or handle multiple files")
+  } else {
+    # Read the CSV file
+    data <- read.csv(file_list[1])
+    
+    # Print a success message and optionally return the dataframe
+    print("File successfully read")
+    return(data)
+  }
+}
+#####################################
+```
+
+
+```{r S3_1 only agb: process agb to gcam subregion weight mean at gridded level}
+# for(data_idx in 1:length(agb_files)) {
+for(data_idx in c(3,5)) {
+  
+# for(data_idx in 1) {
+  # data_idx <- 7
+  # Record the start time
+  start_time <- Sys.time()
+  
+  
+  in_agb <- agb_files[data_idx]
+  
+  forest_agb <- read.csv(in_agb)
+ 
+  
+  # Extract the PFT part from the file name using a regular expression
+  agb_base_part <-sub("_forest.*$", "", basename(in_agb))
+ 
+  
+  
+
+cropc3_file_part <- paste0(agb_base_part, "_c3crop")
+cropc4_file_part <- paste0(agb_base_part, "_c4crop")
+grass_file_part <- paste0(agb_base_part, "_grass")
+
+
+# Call the function
+c3crop_agb <- read_single_csv(in_agb_scaler_path, c3crop_file_part)
+c4crop_agb <- read_single_csv(in_agb_scaler_path, c4crop_file_part)
+
+
+grass_agb <- read_single_csv(in_agb_scaler_path, grass_file_part)
+
+
+
+all_types_agb <- forest_agb %>%
+  rename(forest_agb = mean_scaler) %>%
+  left_join(
+    grass_agb %>% rename(grass_agb = mean_scaler),
+    by = c(
+      "out_reg_code",
+      "out_lu_code",
+      "gcam_reg_name",
+      "basin_abr",
+      "year"
+    )
+  ) %>%
+  left_join(
+    c3crop_agb %>% rename(c3crop_agb = mean_scaler),
+    by = c(
+      "out_reg_code",
+      "out_lu_code",
+      "gcam_reg_name",
+      "basin_abr",
+      "year"
+    )
+  )%>%
+  left_join(
+    c4crop_agb %>% rename(c4crop_agb = mean_scaler),
+    by = c(
+      "out_reg_code",
+      "out_lu_code",
+      "gcam_reg_name",
+      "basin_abr",
+      "year"
+    )
+  )
+  mutate(year = as.numeric(str_extract(year, "\\d+")))
+
+
+
+
+
+
+ # save proceed data
+
+   write.csv(
+    all_types_bgb,
+    paste0(
+      out_bgb_scaler_path,
+      bgb_base_part,
+      "_all4type.csv"
+    ),
+    row.names = FALSE
+  )
+  
+  
+  
+  # Record the end time
+  end_time <- Sys.time()
+  
+  # Calculate the duration and print it
+  duration <- end_time - start_time
+  print(duration)
+
+}
+```
+
+```{r S3 process agb, bgb to gcam subregion weight mean at gridded level}
+for(data_idx in c(3,5)) {
+  # for(data_idx in 1:length(agb_files)) {
+# for(data_idx in 1) {
+  # data_idx <- 2
+  # Record the start time
+  start_time <- Sys.time()
+  
+  
+  in_agb <- agb_files[data_idx]
+  in_bgb <- bgb_files[data_idx]
+  
+  forest_agb <- read.csv(in_agb)
+  forest_bgb <- read.csv(in_bgb)
+  
+  # Extract the PFT part from the file name using a regular expression
+  agb_base_part <-sub("_forest.*$", "", basename(in_agb))
+  bgb_base_part <-sub("_forest.*$", "", basename(in_bgb))
+  
+  
+
+c3crop_file_part <- paste0(agb_base_part, "_c3crop")
+c4crop_file_part <- paste0(agb_base_part, "_c4crop")
+grass_file_part <- paste0(agb_base_part, "_grass")
+
+
+# Call the function
+c3crop_agb <- read_single_csv(in_agb_scaler_path, c3crop_file_part)
+c3crop_bgb <- read_single_csv(in_bgb_scaler_path, c3crop_file_part)
+
+c4crop_agb <- read_single_csv(in_agb_scaler_path, c4crop_file_part)
+c4crop_bgb <- read_single_csv(in_bgb_scaler_path, c4crop_file_part)
+
+
+grass_agb <- read_single_csv(in_agb_scaler_path, grass_file_part)
+grass_bgb <- read_single_csv(in_bgb_scaler_path, grass_file_part)
+
+
+all_types_agb <- forest_agb %>%
+  rename(forest_agb = mean_scaler) %>%
+  left_join(
+    grass_agb %>% rename(grass_agb = mean_scaler),
+    by = c(
+      "out_reg_code",
+      "out_lu_code",
+      "gcam_reg_name",
+      "basin_abr",
+      "year"
+    )
+  ) %>%
+  left_join(
+    c3crop_agb %>% rename(c3crop_agb = mean_scaler),
+    by = c(
+      "out_reg_code",
+      "out_lu_code",
+      "gcam_reg_name",
+      "basin_abr",
+      "year"
+    )
+  )%>%
+  left_join(
+    c4crop_agb %>% rename(c4crop_agb = mean_scaler),
+    by = c(
+      "out_reg_code",
+      "out_lu_code",
+      "gcam_reg_name",
+      "basin_abr",
+      "year"
+    )
+  )%>%
+  mutate(year = as.numeric(str_extract(year, "\\d+")))
+
+
+
+all_types_bgb <- forest_bgb %>%
+  rename(forest_bgb = mean_scaler) %>%
+  left_join(
+    grass_bgb %>% rename(grass_bgb = mean_scaler),
+    by = c(
+      "out_reg_code",
+      "out_lu_code",
+      "gcam_reg_name",
+      "basin_abr",
+      "year"
+    )
+  ) %>%
+  left_join(
+    c3crop_bgb %>% rename(c3crop_bgb = mean_scaler),
+    by = c(
+      "out_reg_code",
+      "out_lu_code",
+      "gcam_reg_name",
+      "basin_abr",
+      "year"
+    )
+  )%>%
+  left_join(
+    c4crop_bgb %>% rename(c4crop_bgb = mean_scaler),
+    by = c(
+      "out_reg_code",
+      "out_lu_code",
+      "gcam_reg_name",
+      "basin_abr",
+      "year"
+    )
+  )%>%
+  mutate(year = as.numeric(str_extract(year, "\\d+")))
+
+
+
+ # save proceed data
+  write.csv(
+    all_types_agb,
+    paste0(
+      out_agb_scaler_path,
+      agb_base_part,
+      "_all4type.csv"
+    ),
+    row.names = FALSE
+  )
+  
+   write.csv(
+    all_types_bgb,
+    paste0(
+      out_bgb_scaler_path,
+      bgb_base_part,
+      "_all4type.csv"
+    ),
+    row.names = FALSE
+  )
+  
+  
+  
+  # Record the end time
+  end_time <- Sys.time()
+  
+  # Calculate the duration and print it
+  duration <- end_time - start_time
+  print(duration)
+
+}
+```
+
+```{r S3_2 only bgb: process bgb to gcam subregion weight mean at gridded level}
+# for(data_idx in 1:length(bgb_files)) {
+for(data_idx in c(4)) {
+  # data_idx <- 2
+  # Record the start time
+  start_time <- Sys.time()
+  
+  
+ 
+  in_bgb <- bgb_files[data_idx]
+  
+ 
+  forest_bgb <- read.csv(in_bgb)
+  
+  # Extract the PFT part from the file name using a regular expression
+ 
+  bgb_base_part <-sub("_forest.*$", "", basename(in_bgb))
+  
+  
+
+c3crop_file_part <- paste0(bgb_base_part, "_c3crop")
+c4crop_file_part <- paste0(bgb_base_part, "_c4crop")
+grass_file_part <- paste0(bgb_base_part, "_grass")
+
+
+# Call the function
+
+c3crop_bgb <- read_single_csv(in_bgb_scaler_path, c3crop_file_part)
+c4crop_bgb <- read_single_csv(in_bgb_scaler_path, c4crop_file_part)
+
+
+
+grass_bgb <- read_single_csv(in_bgb_scaler_path, grass_file_part)
+
+
+
+
+
+all_types_bgb <- forest_bgb %>%
+  rename(forest_bgb = mean_scaler) %>%
+  left_join(
+    grass_bgb %>% rename(grass_bgb = mean_scaler),
+    by = c(
+      "out_reg_code",
+      "out_lu_code",
+      "gcam_reg_name",
+      "basin_abr",
+      "year"
+    )
+  ) %>%
+  left_join(
+    c3crop_bgb %>% rename(c3crop_bgb = mean_scaler),
+    by = c(
+      "out_reg_code",
+      "out_lu_code",
+      "gcam_reg_name",
+      "basin_abr",
+      "year"
+    )
+  )%>%
+  left_join(
+    c4crop_bgb %>% rename(c4crop_bgb = mean_scaler),
+    by = c(
+      "out_reg_code",
+      "out_lu_code",
+      "gcam_reg_name",
+      "basin_abr",
+      "year"
+    )
+  )%>%
+  mutate(year = as.numeric(str_extract(year, "\\d+")))
+
+
+
+  
+   write.csv(
+    all_types_bgb,
+    paste0(
+      out_bgb_scaler_path,
+      bgb_base_part,
+      "_all4type.csv"
+    ),
+    row.names = FALSE
+  )
+  
+  
+  
+  # Record the end time
+  end_time <- Sys.time()
+  
+  # Calculate the duration and print it
+  duration <- end_time - start_time
+  print(duration)
+
+}
+```
+
