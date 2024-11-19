@@ -1,0 +1,755 @@
+---
+title: "GTM_4_dim_var_process"
+author: "Meng Luo"
+date: "2023-08-29"
+output: html_document
+    toc: true
+    toc_float: true
+---
+# use the mature age's FP as the input for GCAM
+
+
+#########################################################
+## update of the this version
+# add FULL_matrix_for_MFP_continue
+
+# Content
+## link to github
+  S0 link to github
+## Setting Up
+  S1 needed R package and dir
+  S2 function save_result
+## functions
+  S3 GCAM XML generation prepare
+  S4 read new AGB scaler
+## pre-processing for GCAM XML
+  S5 update ag cost for crop bio and forest
+  S6_1 update forest and pasture productivity change
+  S6_2 update crop productivity change
+  S6_3 update bio productivity change
+## old code and draft below this line
+  S7 old code, include = FALSE
+  
+  
+  
+# link to github
+```{r S0 link to github , include=FALSE}
+# knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Setting Up
+## Loading Needed R Packages and Setting Directory
+
+```{r S1 needed R package and dir }
+library(tidyverse)
+library(tidyr)
+#install.packages("rlang")
+library(rlang)
+library(dplyr)
+library(gcamdata)
+library('drake')
+## run this in console devtools::load_all()
+
+#################################################################################################
+## need to modify 
+
+## hard disk ############################################### 
+## computer
+# root<-"O:/E/new laptop2/PHD/phd_dissertation/"
+
+## newlaptop
+# root<-"D:/E/new laptop2/PHD/phd_dissertation/"
+# root2<-"D:/"
+# produce outputs in GCAM 7.0 release package
+# main_v7_XML_path <- "E/GCAMv7Forestry-master_VS/GCAMv7Forestry-master/input/gcamdata/xml/"
+## 2023 laptop###############################################
+# root <- "C:/MengLuo/chapter 2_backup/"
+# root2<-"C:/MengLuo/chapter 2_backup/"
+
+## desktop NAS #########################################
+root <- "Z:/Meng/Chapter 3/"
+
+root2 <- "Z:/Meng/Chapter 3/"
+#Z:\Meng\Chapter 3\GCAMv7Forestry-master
+# produce outputs in GCAM 7.0 forest breakout folder
+main_v7_XML_path <- "GCAMv7Forestry-master/input/gcamdata/xml/"
+
+
+
+## ssp1
+# scenario<-"ssp126_2015soc-from-histsoc_default" #  n for SSPn e.g. 1 for SSP1
+# climate_model<-"gfdl-esm4"#"ukesm1-0-ll" #"gfdl-esm4"
+# biome_model<-"classic"
+
+## ssp3
+scenario<-"ssp370_2015soc-from-histsoc_default" #  n for SSPn e.g. 1 for SSP1
+climate_model<-"gfdl-esm4" #"gfdl-esm4"# "ukesm1-0-ll"
+biome_model<-"classic"
+
+# ssp5
+# scenario<-"ssp585_2015soc-from-histsoc_default" # _default, _ssp585ndep, _2015co2 n for SSPn e.g. 1 for SSP1
+# climate_model<-"ukesm1-0-ll"#"ukesm1-0-ll" #"gfdl-esm4"
+# biome_model<-"classic"
+
+
+version_num <-"1"
+case_name<-"_climate_productivityC"
+
+
+
+
+## end of need to modify 
+#################################################################################################
+
+# Z:\Meng\Chapter 3\ISIMIP_GTM_GCAM\Data\ISIMIP_3b_process\GCAM_subregion_mean\aboveCD
+
+main_producticity_path <- paste0(root, "ISIMIP_GTM_GCAM/Data/ISIMIP_3b_process/GCAM_subregion_mean/aboveCD/region_5ymean_alltypes_wrapper/")
+
+XML_version <- paste0(version_num ,case_name,"_",biome_model,"_",climate_model,"_",scenario) 
+
+## end need to modify 
+#########################
+
+main_GTM_mid_xml_path  <-"ISIMIP_GTM_GCAM/Data/GCAM data system_forestversion/useful/"
+main_my_XML_path <- "ISIMIP_GTM_GCAM/Data/GCAM data system_forestversion/new_XML/"
+
+
+# choose aggregation methods #####################
+## SSP1 and SSP5
+
+# L2052_AgProdChange_hi_file <-  paste0(root,main_GTM_mid_xml_path, "L2052.AgProdChange_irr_high.csv")
+# L2052_AgProdChange_irr <- read.csv(L2052_AgProdChange_hi_file, skip = 2)
+# # Define file names
+# v7_crop_XML_file <- paste0(root2, main_v7_XML_path, "ag_prodchange_crop_subregion_irr_hi_", as.character(XML_version), ".xml")
+# GTM_crop_XML_file <- paste0(root, main_my_XML_path, "ag_prodchange_crop_subregion_irr_hi_", as.character(XML_version), ".xml")
+
+
+# ## SSP3 
+L2052_AgProdChange_lo_file <-  paste0(root,main_GTM_mid_xml_path, "L2052.AgProdChange_irr_low.csv")
+L2052_AgProdChange_irr <- read.csv(L2052_AgProdChange_lo_file, skip = 2)
+# Define file names
+v7_crop_XML_file <- paste0(root, main_v7_XML_path, "ag_prodchange_crop_subregion_irr_lo_", as.character(XML_version), ".xml")
+GTM_crop_XML_file <- paste0(root, main_my_XML_path, "ag_prodchange_crop_subregion_irr_lo_", as.character(XML_version), ".xml")
+
+## end need to modify 
+#########################
+```
+
+## read GTM output txt file
+separate each var and save in csv
+# function section
+```{r S2 function save_result }
+save_csv_result <- function(result_DF, result_csv_name,row_names) {
+
+full_save_path <- paste0(root,main_GTM_path, result_csv_name)
+if (row_names == TRUE) {
+write.csv(result_DF,full_save_path, row.names = TRUE)
+} else {
+write.csv(result_DF,full_save_path, row.names = FALSE)
+}
+
+}
+```
+
+# preprocessing for GCAM XML
+## I am right here
+
+```{r S3 GCAM XML generation prepare}
+
+
+all_region <- c("Africa_Eastern",
+"Africa_Northern",
+"Africa_Southern",
+"Africa_Western",
+"Argentina",
+"Australia_NZ",
+"Brazil",
+"Canada",
+"Central America and Caribbean",
+"Central Asia",
+"China",
+"Colombia",
+"EU-12",
+"EU-15",
+"Europe_Eastern",
+"Europe_Non_EU",
+"European Free Trade Association",
+"India",
+"Indonesia",
+"Japan",
+"Mexico",
+"Middle East",
+"Pakistan",
+"Russia",
+"South Africa",
+"South America_Northern",
+"South America_Southern",
+"South Asia",
+"South Korea",
+"Southeast Asia",
+"Taiwan",
+"USA"
+)
+
+```
+
+```{r S4 read new AGB scaler }
+
+
+in_Sagb_file<-paste0(main_producticity_path,biome_model,"_",climate_model,"_w5e5_",scenario,"_fullscalerc3c4_agb_chapter3.csv")
+in_Sagb <-read.csv(in_Sagb_file,check.names = FALSE)
+
+in_Sagb_long<-in_Sagb%>%
+  pivot_longer(cols = 10:26,names_to = "year",values_to = "agb_scaler")%>%
+  dplyr::select(region, child.nodes,landtype,subregion,broad_type,harm_type, year,agb_scaler)%>%
+  mutate(year=as.numeric(year))
+
+in_Sagb_long1<-in_Sagb%>%
+  mutate("2015" = 1)%>%
+  pivot_longer(cols = 10:27,names_to = "year",values_to = "agb_scaler")%>%
+  dplyr::select(region, child.nodes,landtype,subregion,broad_type,harm_type, year,agb_scaler)%>%
+  mutate(year=as.numeric(year))%>%
+  arrange(region, child.nodes,landtype,subregion,broad_type,harm_type, year)
+  
+
+check<-in_Sagb_long%>%
+  filter(landtype=="FodderGrass")
+
+
+in_Sagb_file2<-paste0(main_producticity_path,biome_model,"_",climate_model,"_w5e5_",scenario,"_regional_scale_fullscaler_yieldc3c4.csv")
+in_Sagb2 <-read.csv(in_Sagb_file2,check.names = FALSE)
+
+in_Sagb_long2<-in_Sagb2%>%
+  dplyr::select(-c("AgProdChange","year","out_reg_code","out_lu_code"))%>%
+  mutate("2015" = 1)%>%
+  pivot_longer(cols = 8:25,names_to = "year",values_to = "agb_scaler")%>%
+  # rename(AgProductionTechnology = child.nodes)%>%
+  # in_Sagb_long2<-in_Sagb_long2%>%
+  dplyr::select(region, AgProductionTechnology,landtype,subregion,harm_type, year,agb_scaler)%>%
+  distinct()%>%
+  mutate(year=as.numeric(year))%>%
+  arrange(region, AgProductionTechnology,year)
+
+
+
+in_Sagb_file3<-paste0(main_producticity_path,biome_model,"_", climate_model,"_w5e5_",scenario,"_regional_scale_fullscaler_bio_yieldc3c4.csv")
+in_Sagb3 <-read.csv(in_Sagb_file3,check.names = FALSE)
+
+in_Sagb_long3<-in_Sagb3%>%
+  dplyr::select(-c("AgProdChange","year","out_reg_code","out_lu_code"))%>%
+  mutate("2015" = 1)%>%
+  pivot_longer(cols = 8:25,names_to = "year",values_to = "agb_scaler")%>%
+  # rename(AgProductionTechnology = child.nodes)%>%
+  # in_Sagb_long2<-in_Sagb_long2%>%
+  dplyr::select(region, AgProductionTechnology,landtype,subregion,harm_type, year,agb_scaler)%>%
+  distinct()%>%
+  mutate(year=as.numeric(year))%>%
+  arrange(region, AgProductionTechnology,year)
+  
+
+```
+
+
+## generate ag cost XML
+```{r S5 update ag cost for crop bio and forest }
+
+# read L2052.AgCost_For
+L2052.AgCost_For_path <- paste0(root,main_GTM_mid_xml_path,"L2052.AgCost_For.csv")
+L2062.AgCost_ag_path <- paste0(root,main_GTM_mid_xml_path,"L2062.AgCost_ag_irr_mgmt_adj.csv")
+L2062.AgCost_bio_path <- paste0(root,main_GTM_mid_xml_path,"L2062.AgCost_bio_irr_mgmt_adj.csv")
+
+L2052.AgCost_For <- read.csv(L2052.AgCost_For_path, skip = 1)
+L2062.AgCost_ag <- read.csv(L2062.AgCost_ag_path, skip = 2)
+L2062.AgCost_bio <- read.csv(L2062.AgCost_bio_path, skip = 2)
+
+
+in_Sagb_file2<-paste0(main_producticity_path,biome_model,"_", climate_model,"_w5e5_",scenario,"_regional_scale_fullscaler_yieldc3c4.csv")
+in_Sagb2 <-read.csv(in_Sagb_file2,check.names = FALSE)
+
+# Function to process AgCost data
+process_AgCost_data <- function(data, in_Sagb_long) {
+  # Filter data for years before and starting from 2020
+  data_before_2020 <- data %>%
+    filter(year <= 2020)
+  
+  data_new <- data %>%
+    filter(year >= 2020) %>%
+    mutate(subregion = sub(".*_(.*)$", "\\1", AgSupplySubsector)) %>%
+    left_join(in_Sagb_long, by = c("region", "subregion", "year", "AgSupplySector" = "broad_type")) %>%
+    mutate(nonLandVariableCost = nonLandVariableCost / agb_scaler) %>%
+    dplyr::select(1:6) %>%
+    rbind(data_before_2020) %>%
+    arrange(region, AgSupplySector, AgSupplySubsector, year)
+  
+  return(data_new)
+}
+
+
+process_AgCost_ag_data <- function(data, in_Sagb_long) {
+  # Filter data for years before and starting from 2020
+  
+  # data<-L2062.AgCost_bio
+  # in_Sagb_long<-in_Sagb_long3
+  # 
+  # check<-in_Sagb_long%>%
+  #   filter(AgProductionTechnology=="Soybean_CaspianNE_IRR_lo")
+  # 
+  data_before_2020 <- data %>%
+    filter(year <= 2020)
+  
+  data_new <- data %>%
+    filter(year >= 2020) %>%
+    mutate(subregion = sub(".*_(.*)$", "\\1", AgSupplySubsector)) %>%
+    # mutate(landtype = sub("_.*", "", AgSupplySubsector)) %>%
+    left_join(in_Sagb_long, by = c("region", "subregion", "year", "AgProductionTechnology")) %>%
+    mutate(nonLandVariableCost = nonLandVariableCost / agb_scaler) %>%
+    dplyr::select(1:6) %>%
+    rbind(data_before_2020) %>%
+    arrange(region, AgSupplySector, AgSupplySubsector, year)
+  
+  return(data_new)
+}
+# Apply the function to the specific datasets
+L2052.AgCost_For_new <- process_AgCost_data(L2052.AgCost_For,  in_Sagb_long)
+L2062.AgCost_bio_new <- process_AgCost_ag_data(L2062.AgCost_bio,  in_Sagb_long3)
+
+L2062.AgCost_ag_new <- process_AgCost_ag_data(L2062.AgCost_ag,  in_Sagb_long2)
+
+
+
+
+# library(dplyr)
+
+# Function to create XML path
+create_xml_path <- function(root, main_path, type, version) {
+  paste0(root, main_path, 'ag_cost_IRR_MGMT_', type, '_', as.character(version), '.xml')
+}
+
+# Function to process XML creation and data addition
+process_xml <- function(xml_path, data, data_tag) {
+  
+  # xml_path<-my_for_XML_path
+  # data<-L2052.AgCost_For_new
+  # data_tag<-"AgCost"
+ 
+  xml_filename <- create_xml(xml_path) %>%
+    add_xml_data(data, data_tag)
+
+  
+  xml_filename %>%
+    gcamdata::run_xml_conversion()
+  
+  return(xml_filename)
+}
+
+
+
+# Process for forest managed
+my_for_XML_path <- create_xml_path(root, main_my_XML_path, "for", XML_version)
+v7_for_XML_path <- create_xml_path(root2, main_v7_XML_path, "for", XML_version)
+
+process_xml(my_for_XML_path, L2052.AgCost_For_new, "AgCost")
+process_xml(v7_for_XML_path, L2052.AgCost_For_new, "AgCost")
+
+# Process for agriculture managed
+my_ag_XML_path <- create_xml_path(root, main_my_XML_path, "ag", XML_version)
+v7_ag_XML_path <- create_xml_path(root2, main_v7_XML_path, "ag", XML_version)
+
+process_xml(my_ag_XML_path, L2062.AgCost_ag_new, "AgCost")
+process_xml(v7_ag_XML_path, L2062.AgCost_ag_new, "AgCost")
+
+# Process for biomass managed
+my_ag_XML_path <- create_xml_path(root, main_my_XML_path, "bio", XML_version)
+v7_ag_XML_path <- create_xml_path(root2, main_v7_XML_path, "bio", XML_version)
+
+process_xml(my_ag_XML_path, L2062.AgCost_bio_new, "AgCost")
+process_xml(v7_ag_XML_path, L2062.AgCost_bio_new, "AgCost")
+
+
+```
+
+
+## generate forest productivity XML
+```{r S6_1 update forest and pasture productivity change}
+
+# read ag product change file's template
+
+
+# read L2052_AgProdChange_ag_irr_ref (ag_prd_change template)
+L2052_AgProdChange_file <-  paste0(root,main_GTM_mid_xml_path, "L2052.AgProdChange_ag_irr_ref.csv") 
+L2052_AgProdChange_ag_irr_ref <- read.csv(L2052_AgProdChange_file, skip = 1)
+####################################################################
+
+# Function to read CSV files
+read_csv_file <- function(file_path) {
+  read.csv(file_path, skip = 1)
+}
+
+# Function to prepare GCAM PFC template
+prepare_gcam_pfc_template <- function(data, sector) {
+  data %>%
+    mutate(AgSupplySector = sector,
+           AgSupplySubsector = LandLeaf,
+           AgProductionTechnology = LandLeaf) %>%
+    dplyr::select(region, AgSupplySector, AgSupplySubsector, AgProductionTechnology, year)
+}
+
+# Function to expand years and add subregion
+expand_years_and_subregion <- function(data) {
+  data %>%
+    complete(year = seq(2020, 2100, 5), 
+             nesting(region, AgSupplySector, AgSupplySubsector, AgProductionTechnology)) %>%
+    filter(year >= 2020) %>%
+    mutate(subregion = sub(".*_(.*)$", "\\1", AgSupplySubsector))
+}
+
+# Function to replace AgProdChange with GTM's value
+replace_agprodchange_with_gtm <- function(expanded_data, gtm_data, sector) {
+  expanded_data %>%
+    left_join(gtm_data %>% mutate(year = as.integer(year)), by = c("region", "subregion", "year")) %>%
+    mutate(AgProdChange = case_when(
+      GCAM_subregion_ag_prodc >= 2 ~ 2,
+      GCAM_subregion_ag_prodc < -2 ~ -2,
+      TRUE ~ GCAM_subregion_ag_prodc
+    )) %>%
+    dplyr::select(-GCAM_subregion_ag_prodc) %>%
+    dplyr::select(region, AgSupplySector, AgSupplySubsector, AgProductionTechnology, year, AgProdChange)
+}
+
+# Define file paths
+L223_LN3_MgdAllocation_noncrop_file <- paste0(root, main_GTM_mid_xml_path, "L2231.LN3_MgdAllocation_noncrop.csv")
+L222_LN2_MgdAllocation_file <- paste0(root, main_GTM_mid_xml_path, "L222.LN2_MgdAllocation.csv")
+
+# Read CSV files
+L223_LN3_MgdAllocation_noncrop <- read_csv_file(L223_LN3_MgdAllocation_noncrop_file)
+L222_LN2_MgdAllocation <- read_csv_file(L222_LN2_MgdAllocation_file)
+
+# Prepare GCAM PFC templates
+L223_LN3_MgdAllocation_forest <- prepare_gcam_pfc_template(L223_LN3_MgdAllocation_noncrop, "Forest")
+L222_LN2_MgdAllocation_pasture <- prepare_gcam_pfc_template(L222_LN2_MgdAllocation, "Pasture")
+
+# Expand years and add subregions
+expanded_dataframe_forest <- expand_years_and_subregion(L223_LN3_MgdAllocation_forest)
+expanded_dataframe_pasture <- expand_years_and_subregion(L222_LN2_MgdAllocation_pasture)
+
+# Select necessary columns for GTM data
+in_Sagb_long_needed_forest <- in_Sagb_long1 %>%
+  mutate(GCAM_subregion_ag_prodc = (agb_scaler/lag(agb_scaler))^(1/5) - 1) %>%
+  filter(landtype == "Forest") %>%
+  filter(year >= 2020) %>%
+  dplyr::select(region, subregion, year, landtype, GCAM_subregion_ag_prodc)
+
+in_Sagb_long_needed_pasture <- in_Sagb_long1 %>%
+  mutate(GCAM_subregion_ag_prodc = (agb_scaler/lag(agb_scaler))^(1/5) - 1) %>%
+  filter(landtype == "Pasture") %>%
+  filter(year >= 2020) %>%
+  dplyr::select(region, subregion, year, landtype, GCAM_subregion_ag_prodc)
+
+# Replace AgProdChange with ISIMIP's value
+L2052.AgProdChange_ag_forest_new <- replace_agprodchange_with_gtm(expanded_dataframe_forest, in_Sagb_long_needed_forest, "Forest")
+L2052.AgProdChange_ag_pasture_new <- replace_agprodchange_with_gtm(expanded_dataframe_pasture, in_Sagb_long_needed_pasture, "Pasture")
+
+# Define file names
+v7_FP_XML_file <- paste0(root2, main_v7_XML_path, "ag_prodchange_forest_subregion_", as.character(XML_version), ".xml")
+v7_pasture_XML_file <- paste0(root2, main_v7_XML_path, "ag_prodchange_pasture_subregion_", as.character(XML_version), ".xml")
+GTM_FP_XML_file <- paste0(root, main_my_XML_path, "ag_prodchange_forest_subregion_", as.character(XML_version), ".xml")
+GTM_pasture_XML_file <- paste0(root, main_my_XML_path, "ag_prodchange_pasture_subregion_", as.character(XML_version), ".xml")
+
+# Save data in XML format
+create_xml(v7_FP_XML_file) %>% add_xml_data(L2052.AgProdChange_ag_forest_new, "AgProdChange") -> ag_prodchange_MGMT_forest.xml
+create_xml(v7_pasture_XML_file) %>% add_xml_data(L2052.AgProdChange_ag_pasture_new, "AgProdChange") -> ag_prodchange_MGMT_pasture.xml
+create_xml(GTM_FP_XML_file) %>% add_xml_data(L2052.AgProdChange_ag_forest_new, "AgProdChange") -> ag_prodchange_MGMT_forest2.xml
+create_xml(GTM_pasture_XML_file) %>% add_xml_data(L2052.AgProdChange_ag_pasture_new, "AgProdChange") -> ag_prodchange_MGMT_pasture2.xml
+
+# Run XML conversion
+ag_prodchange_MGMT_forest.xml %>% gcamdata::run_xml_conversion()
+ag_prodchange_MGMT_pasture.xml %>% gcamdata::run_xml_conversion()
+ag_prodchange_MGMT_forest2.xml %>% gcamdata::run_xml_conversion()
+ag_prodchange_MGMT_pasture2.xml %>% gcamdata::run_xml_conversion()
+
+
+
+```
+
+
+```{r S6_2 update crop productivity change}
+####################################################################
+######## important !!!!!!!!!########################################
+####################################################################
+####################################################################
+####################################################################
+
+# SSP1, SSP5: L2052.AgProdChange_irr_high
+# SSP3: L2052.AgProdChange_irr_low
+# please find the file read code in S1
+####################################################################
+######## important !!!!!!!!!########################################
+####################################################################
+
+
+
+
+
+#######################################################
+#######################################################  
+#######################################################
+
+# Select necessary columns for ISIMIP data
+in_Sagb_long_needed_crop <- in_Sagb_long2 %>%
+  group_by(region, AgProductionTechnology)%>%
+  mutate(GCAM_subregion_ag_prodc = (agb_scaler/lag(agb_scaler))^(1/5)) %>%
+  ungroup()%>%
+  filter(harm_type %in% c("c3Crop","c4Crop","Grass"))%>%
+  dplyr::select(region, year, AgProductionTechnology, GCAM_subregion_ag_prodc)%>%
+  filter(year>=2020)
+
+check<-in_Sagb_long_needed_crop%>%
+  filter(is.na(AgProductionTechnology))
+
+L2052_AgProdChange_irr_new<-L2052_AgProdChange_irr%>%
+  # mutate(subregion = sub(".*_(.*)$", "\\1", AgSupplySubsector))%>%
+  left_join(in_Sagb_long_needed_crop, by=c("region",  "year", "AgProductionTechnology"))%>%
+  mutate(AgProdChange = GCAM_subregion_ag_prodc*(1+AgProdChange)-1)%>%
+  dplyr::select(-GCAM_subregion_ag_prodc)
+
+# Replace AgProdChange with ISIMIP's value
+check2<-L2052_AgProdChange_irr_new%>%
+  filter(AgSupplySector== "FodderGrass")
+
+
+
+
+# Save data in XML format
+create_xml(v7_crop_XML_file) %>% add_xml_data(L2052_AgProdChange_irr_new, "AgProdChange") -> ag_prodchange_MGMT_crop.xml
+
+create_xml(GTM_crop_XML_file) %>% add_xml_data(L2052_AgProdChange_irr_new, "AgProdChange") -> ag_prodchange_MGMT_crop2.xml
+
+
+# Run XML conversion
+ag_prodchange_MGMT_crop.xml %>% gcamdata::run_xml_conversion()
+ag_prodchange_MGMT_crop2.xml %>% gcamdata::run_xml_conversion()
+
+
+
+
+```
+
+```{r S6_3 update bio productivity change}
+
+# read ag product change file's template
+
+####################################################################
+
+
+# read L2052_AgProdChange_ag_irr_ref (ag_prd_change template)
+
+
+# in_Sagb_file2<-paste0(main_producticity_path,biome_model,"_", climate_model,"_w5e5_",scenario,"_fullscaler_yieldc3c4.csv")
+# in_Sagb2 <-read.csv(in_Sagb_file2,check.names = FALSE)
+
+
+
+L2052_AgProdChange_bio_ref_file <-  paste0(root,main_GTM_mid_xml_path, "L2052.AgProdChange_bio_irr_ref.csv") 
+L2052_AgProdChange_bio_irr_ref <- read.csv(L2052_AgProdChange_bio_ref_file, skip = 1)
+
+
+in_Sagb_long<-in_Sagb%>%
+  rename(AgProductionTechnology=child.nodes)%>%
+  dplyr::select(-c("above.ground.carbon.density","out_reg_code","out_lu_code"))%>%
+  mutate("2015" = 1)%>%
+  pivot_longer(cols = 7:24,names_to = "year",values_to = "agb_scaler")%>%
+  # rename(AgProductionTechnology = child.nodes)%>%
+  dplyr::select(region, AgProductionTechnology,landtype,subregion,harm_type, year,agb_scaler)%>%
+  mutate(year=as.numeric(year))%>%
+  arrange(region, AgProductionTechnology,year)
+  
+##############################################
+
+# Select necessary columns for GTM data
+in_Sagb_long_needed_bio <- in_Sagb_long %>%
+  group_by(region, AgProductionTechnology)%>%
+  mutate(GCAM_subregion_ag_prodc = (agb_scaler/lag(agb_scaler))^(1/5)) %>%
+  ungroup()%>%
+  filter(harm_type %in% c("c4Crop","c3Crop","Forest"))%>%
+  dplyr::select(region, year, AgProductionTechnology, GCAM_subregion_ag_prodc)%>%
+  filter(year>=2020)
+
+check<-in_Sagb_long_needed_bio%>%
+  filter(is.na(AgProductionTechnology))
+
+L2052_AgProdChange_bio_irr_ref_new<-L2052_AgProdChange_bio_irr_ref%>%
+  # mutate(subregion = sub(".*_(.*)$", "\\1", AgSupplySubsector))%>%
+  left_join(in_Sagb_long_needed_bio, by=c("region",  "year", "AgProductionTechnology"))%>%
+  mutate(AgProdChange = GCAM_subregion_ag_prodc*(1+AgProdChange)-1)%>%
+  dplyr::select(-GCAM_subregion_ag_prodc)
+
+# Replace AgProdChange with ISIMIP's value
+
+
+# Define file names
+v7_bio_XML_file <- paste0(root2, main_v7_XML_path, "ag_prodchange_bio_subregion_irr_ref_", as.character(XML_version), ".xml")
+
+GTM_bio_XML_file <- paste0(root, main_my_XML_path, "ag_prodchange_bio_subregion_irr_ref_", as.character(XML_version), ".xml")
+
+
+# Save data in XML format
+create_xml(v7_bio_XML_file) %>% add_xml_data(L2052_AgProdChange_bio_irr_ref_new, "AgProdChange") -> ag_prodchange_MGMT_bio.xml
+
+create_xml(GTM_bio_XML_file) %>% add_xml_data(L2052_AgProdChange_bio_irr_ref_new, "AgProdChange") -> ag_prodchange_MGMT_bio2.xml
+
+
+# Run XML conversion
+ag_prodchange_MGMT_bio.xml %>% gcamdata::run_xml_conversion()
+ag_prodchange_MGMT_bio2.xml %>% gcamdata::run_xml_conversion()
+
+
+
+
+```
+# old code and draft below this line
+```{r S7 old code, include = FALSE}
+#############################################################
+# ## forest
+# 
+# # read L2231.LN3_MgdAllocation_noncrop (to get subregion with managed forest)
+# L223_LN3_MgdAllocation_noncrop_file <-  paste0(root,main_GTM_mid_xml_path, "L2231.LN3_MgdAllocation_noncrop.csv")
+# L223_LN3_MgdAllocation_noncrop <- read.csv(L223_LN3_MgdAllocation_noncrop_file, skip = 1)
+# 
+# # make new GCAM PFC template with all managed forest region
+# L223_LN3_MgdAllocation_forest <- L223_LN3_MgdAllocation_noncrop %>%
+#   # all type in this file belongs to managed forest
+#   mutate(AgSupplySector = "Forest")%>%
+#   mutate(AgSupplySubsector = LandLeaf)%>%
+#   mutate(AgProductionTechnology = LandLeaf)  %>% 
+#   dplyr::select(region, AgSupplySector,AgSupplySubsector,AgProductionTechnology,year)
+# 
+# 
+# # expand the hist year to future 
+# expanded_dataframe_forest <- L223_LN3_MgdAllocation_forest %>%
+#    complete(year = seq(2020, 2100, 5), 
+#            nesting(region,AgSupplySector, AgSupplySubsector, AgProductionTechnology))%>%
+#   filter(year >= 2020) %>%
+#    mutate(subregion = sub(".*_(.*)$", "\\1", AgSupplySubsector))
+#  
+# # fill AgProdChange with the GTM based FPC
+# 
+# # select needed col
+# in_Sagb_long_needed_forest <- in_Sagb_long %>%
+#   mutate(GCAM_subregion_ag_prodc = agb_scaler^(1/5) - 1)%>%
+#   filter(landtype=="Forest")%>%
+#   dplyr::select(region, subregion,year,landtype,GCAM_subregion_ag_prodc)
+# 
+# 
+#   
+# ## replace the FP with GTM's value
+# L2052.AgProdChange_ag_forest_new <- expanded_dataframe_forest%>%
+#   # join GTM csv with GCAM L2052.AgProdChange_ag_irr_ref by region name
+#   left_join( in_Sagb_long_needed_forest %>%
+#       mutate(year = as.integer(year)), by = c("region" , "subregion","year")) %>%
+#   # mutate AgProdChange that same as the value in GCAM_5_year_productivity_change_percent
+#   # add a range control, allow change from -2~2
+#   mutate(AgProdChange = case_when(
+#     GCAM_subregion_ag_prodc >= 2 ~ 2,
+#     GCAM_subregion_ag_prodc < -2 ~ -2,
+#     TRUE ~ GCAM_subregion_ag_prodc
+#   ))%>%
+#   # drop GCAM_5_year_productivity_change_percent
+#   select(-GCAM_subregion_ag_prodc)%>%
+#   select(region, AgSupplySector,AgSupplySubsector,AgProductionTechnology,year,AgProdChange)
+# 
+# 
+# # save in GCAM 7.0 forest breakout version
+# v7_FP_XML_file <- paste0(root,main_v7_XML_path,"ag_prodchange_forest_subregion_",as.character(XML_version),".xml")
+# 
+# create_xml(v7_FP_XML_file) %>%
+#   add_xml_data(L2052.AgProdChange_ag_forest_new, "AgProdChange")->
+#   ag_prodchange_MGMT_forest.xml
+#     
+# ag_prodchange_MGMT_forest.xml %>% gcamdata::run_xml_conversion()
+#     
+# # save in GCAM_para_update_to_GTMs       
+# GTM_FP_XML_file <- paste0(root,main_my_XML_path,"ag_prodchange_forest_subregion_",as.character(XML_version),".xml")
+#  
+# create_xml(GTM_FP_XML_file) %>%
+# add_xml_data(L2052.AgProdChange_ag_forest_new, "AgProdChange")->
+#   ag_prodchange_MGMT_forest2.xml
+#     
+# ag_prodchange_MGMT_forest2.xml %>% gcamdata::run_xml_conversion()
+#     
+#    
+# # save csv outputs
+# # FP_CSV_file <-paste0(root,main_GTM_mid_xml_path,"ag_prodchange_",scenario,"_IRR_MGMT_all_forest_subregion_v7_GTM_",as.character(XML_version),".csv")
+# # write.csv(L2052.AgProdChange_ag_irr_ref_new2,FP_CSV_file)
+# 
+# 
+# 
+# ##########################################################################################################################
+# 
+# ## pasture ###############################################################################################################
+# 
+# ##########################################################################################################################
+# L222_LN2_MgdAllocation_file <-  paste0(root,main_GTM_mid_xml_path, "L222.LN2_MgdAllocation.csv")
+# L222_LN2_MgdAllocation <- read.csv(L222_LN2_MgdAllocation_file, skip = 1)
+# ############################################
+# 
+# # make new GCAM PFC template with all managed forest region
+# L222_LN2_MgdAllocation_pasture <- L222_LN2_MgdAllocation %>%
+#   mutate(AgSupplySector = str_extract(LandLeaf, "^[^_]+"))%>%
+#   filter(AgSupplySector %in% c("Pasture") )%>%
+#   mutate(AgSupplySubsector = LandLeaf)%>%
+#   mutate(AgProductionTechnology = LandLeaf)  %>% 
+#   dplyr::select(region, AgSupplySector,AgSupplySubsector,AgProductionTechnology,year)
+# 
+# # expand the hist year to future 
+# expanded_dataframe_pasture <- L222_LN2_MgdAllocation_pasture %>%
+#    complete(year = seq(2020, 2100, 5), 
+#            nesting(region,AgSupplySector, AgSupplySubsector, AgProductionTechnology))%>%
+#   filter(year >= 2020) %>%
+#    mutate(subregion = sub(".*_(.*)$", "\\1", AgSupplySubsector))
+#   
+# # fill AgProdChange with the new data from ISIMIP
+# 
+# # select needed col
+# in_Sagb_long_needed_pasture <- in_Sagb_long %>%
+#   mutate(GCAM_subregion_ag_prodc = agb_scaler^(1/5) - 1)%>%
+#   filter(landtype=="Pasture")%>%
+#   dplyr::select(region, subregion,year,landtype,GCAM_subregion_ag_prodc)
+# 
+# 
+# 
+#   
+# ## replace the FP with GTM's value
+# L2052.AgProdChange_ag_pasture_new <- expanded_dataframe_pasture%>%
+#   # join GTM csv with GCAM L2052.AgProdChange_ag_irr_ref by region name
+#   left_join( in_Sagb_long_needed %>%
+#       mutate(year = as.integer(year)), by = c("region" , "subregion","year")) %>%
+#   # mutate AgProdChange that same as the value in GCAM_5_year_productivity_change_percent
+#   # add a range control, allow change from -2~2
+#   mutate(AgProdChange = case_when(
+#     GCAM_subregion_ag_prodc >= 2 ~ 2,
+#     GCAM_subregion_ag_prodc < -2 ~ -2,
+#     TRUE ~ GCAM_subregion_ag_prodc
+#   ))%>%
+#   # drop GCAM_5_year_productivity_change_percent
+#   select(-GCAM_subregion_ag_prodc)%>%
+#   select(region, AgSupplySector,AgSupplySubsector,AgProductionTechnology,year,AgProdChange)
+# 
+# # save in GCAM 7.0
+# v7_pasture_XML_file <- paste0(root,main_v7_XML_path,"ag_prodchange_pasture_subregion_",as.character(XML_version),".xml")
+# 
+# create_xml(v7_pasture_XML_file) %>%
+#   add_xml_data(L2052.AgProdChange_ag_pasture_new, "AgProdChange")->
+#   ag_prodchange_MGMT_pasture.xml
+#     
+# ag_prodchange_MGMT_pasture.xml %>% gcamdata::run_xml_conversion()
+#     
+# # save in GCAM_para_update_to_GTMs       
+# GTM_pasture_XML_file <- paste0(root,main_my_XML_path,"ag_prodchange_pasture_subregion_",as.character(XML_version),".xml")
+#  
+# create_xml(GTM_pasture_XML_file) %>%
+# add_xml_data(L2052.AgProdChange_ag_pasture_new, "AgProdChange")->
+#   ag_prodchange_MGMT_pasture2.xml
+#     
+# ag_prodchange_MGMT_pasture2.xml %>% gcamdata::run_xml_conversion()
+```
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

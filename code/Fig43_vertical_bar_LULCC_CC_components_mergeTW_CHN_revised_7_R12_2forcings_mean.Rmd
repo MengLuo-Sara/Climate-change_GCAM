@@ -1,0 +1,601 @@
+---
+title: "try_RGCAM"
+author: "Meng"
+date: "2023-09-25"
+output: html_document
+---
+
+
+### content
+
+## prepare
+# knit
+  S0 knit
+# path package function
+  S1 set path and install package
+  S2 save_result function
+# read database
+  S3 get data from GCAM database
+  
+## plot
+# test for cost change
+  
+# querylist_land[1]
+  S5_2 aggregated land_allocation time series group plot (for exclude_PROPBIO vs ori)
+  S5 aggregated land_allocation time series plot
+  S6 aggregated land_allocation time series spatial map
+# querylist_land[4]  
+  S7 ag production by tech time series plot
+  S8 ag production by tech time series spatial map
+# draft
+old, echo = FALSE
+  
+  
+  
+
+
+
+```{r S0 knit, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r S1 set path and install package}
+
+require(devtools)
+#Please use this in console if needed: install_github('JGCRI/rgcam', build_vignettes=TRUE, force =TRUE)
+# install.packages("patchwork")
+library (rgcam)
+library(tidyverse)
+library(tidyr)
+library(rlang)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+library(sf)
+library(svglite)
+library(cowplot)
+library(gridExtra)
+library(ggthemes)
+library(scales)
+library(RColorBrewer)
+
+
+# root <- "D:/"
+
+fig_case_name_in <- "_v4_R12"
+fig_case_name <- "_v5_R12"
+
+scenarios<-c("SSP585")
+# forcings<-c("gfdl","ukesm")
+
+scenario<-scenarios[1]
+
+# forcing<-forcings[1]
+
+## database_basexdb/
+
+
+######################
+# read from hard disk ##############################################################
+# chen lab desktop
+# # root <- "O:/"
+# ## new laptop
+# root <- "D:/"
+## database_basexdb/
+# output_dir <- paste0(root, "E/Data/", sep='') 
+# figure_save_path <- paste0(root,"E/new laptop2/PHD/my_2024_1_manuscript/Figure&table/figure/compare_GCAM_out/LULCC spatial vertical bar/", sep='') 
+# csv_save_path <- paste0(root,"E/new laptop2/PHD/my_2024_1_manuscript/Figure&table/figure/compare_GCAM_out/", sep='') 
+# input_dir <- paste0(root,"E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/GCAM_db_extact_dat/CSV/")
+# 
+# # read shp file
+# shp_path <- paste0(root, "E/new laptop2/PHD/GCAM/boundary/gcam_boundaries_moirai_3p1_0p5arcmin_wgs84/gcam_boundaries_moirai_3p1_0p5arcmin_wgs84/main_outputs/region_boundaries_moirai_combined_3p1_0p5arcmin.shp")
+# # plot(data_sf)
+
+
+
+# read from 2023 laptop  ##############################################################
+
+# 2023 laptop
+# root <- "C:/MengLuo/chapter 2_backup/"
+
+# NAS
+root <- "Z:/Meng/back_up_all/9_updates/"
+
+## database_basexdb/
+# output_dir <- paste0(root, "E/Data/", sep='') 
+figure_save_path <- paste0(root,"my_2024_1_manuscript/Figure&table/figure/compare_GCAM_out/LULCC spatial vertical bar/", sep='') 
+# csv_save_path<- paste0(root,"my_2024_1_manuscript/Figure&table/figure/compare_GCAM_out/", sep='') 
+input_dir <- paste0(root,"climate_FPC_GCAM/Data/GCAM_db_extact_dat/CSV/")
+
+# read shp file
+shp_path <- paste0(root, "climate_FPC_GCAM/Code/boundary/gcam_boundaries_moirai_3p1_0p5arcmin_wgs84/gcam_boundaries_moirai_3p1_0p5arcmin_wgs84/main_outputs/region_boundaries_moirai_combined_3p1_0p5arcmin.shp")
+# end   #############################################################################################
+
+data_sf <- st_read(shp_path)
+
+```
+
+
+```{r S2 save_result function}
+save_csv_result <- function(result_DF, result_csv_name,row_names) {
+  
+save_dir<- paste0(root,"E/new laptop2/PHD/phd_dissertation/GCAM_para_update_to_GTMs/EXCEL/checking&summary/", sep='')
+  
+full_save_path <- paste0(save_dir, result_csv_name)
+if (row_names == TRUE) {
+write.csv(result_DF,full_save_path, row.names = TRUE)
+} else {
+write.csv(result_DF,full_save_path, row.names = FALSE)
+}
+
+}
+```
+
+```{r read data}
+
+GFDL_data<-read.csv(paste0(
+    figure_save_path,
+    "Fig13_merge_alltype_",
+    scenario,
+    fig_case_name_in,
+    ".csv"
+  ))%>%
+  dplyr::select(region,landleaf,year,CO2_diff,Ndep_diff,temp_precipi_diff,landtype)%>%
+  rename(CO2_diff_gfdl = CO2_diff,
+         Ndep_diff_gfdl = Ndep_diff,
+         temp_precipi_diff_gfdl = temp_precipi_diff)
+
+
+UKESM_data<-read.csv(paste0(
+    figure_save_path,
+    "Fig13_merge_alltype_ukesm_",
+    scenario,
+    fig_case_name_in,
+    ".csv"
+  ))%>%
+  dplyr::select(region,landleaf,year,CO2_diff,Ndep_diff,temp_precipi_diff,landtype)%>%
+  rename(CO2_diff_ukesm = CO2_diff,
+         Ndep_diff_ukesm = Ndep_diff,
+         temp_precipi_diff_ukesm = temp_precipi_diff)
+
+merge_alltype<-GFDL_data%>%
+  left_join(UKESM_data,by=c("region","landleaf","year","landtype"))%>%
+  mutate(CO2_diff = (CO2_diff_ukesm+CO2_diff_gfdl)/2,
+         Ndep_diff = (Ndep_diff_ukesm+Ndep_diff_gfdl)/2,
+         temp_precipi_diff = (temp_precipi_diff_ukesm+CO2_diff_gfdl)/2)%>%
+  dplyr::select(-CO2_diff_ukesm,-CO2_diff_gfdl,-Ndep_diff_ukesm,-Ndep_diff_gfdl,-temp_precipi_diff_ukesm,-CO2_diff_gfdl)
+         
+
+
+```
+
+
+
+# spatial map
+
+
+
+
+```{r S merge regions}
+other_regions<-c("Pakistan",
+"Africa_Northern",
+"South Asia",
+"South Korea",
+"Middle East",
+"Central Asia",
+"Central America and Caribbean",
+"South Africa",
+"Africa_Eastern",
+"Colombia",
+"Mexico",
+"South America_Northern",
+"European Free Trade Association",
+"Argentina",
+"Africa_Southern",
+"Europe_Eastern",
+"Europe_Non_EU",
+"Japan",
+"South America_Southern",
+"Indonesia"
+)
+####################################################
+## merge the below regions into "Others" for the vertical bar in the main text
+# Pakistan
+# Africa_Northern
+# South Asia
+# South Korea
+# Middle East
+# Africa_Eastern
+# South Africa
+# Central Asia
+# Central America and Caribbean
+# European Free Trade Association
+# Europe_Eastern
+# Argentina
+# Mexico
+# Europe_Non_EU
+# Africa_Southern
+# Colombia
+# South America_Northern
+# Japan
+# South America_Southern
+# Indonesia
+# India
+# Africa_Western
+
+
+# other_regions<-c(
+
+# "Pakistan",
+# "Africa_Northern",
+# "South Asia",
+# "South Korea",
+# "Middle East",
+# "Africa_Eastern",
+# "South Africa",
+# "Central Asia",
+# "Central America and Caribbean",
+# "European Free Trade Association",
+# "Europe_Eastern",
+# "Argentina",
+# "Mexico",
+# "Europe_Non_EU",
+# "Africa_Southern",
+# "Colombia",
+# "South America_Northern",
+# "Japan",
+# "South America_Southern",
+# "Indonesia"#,
+# "India",
+# "Africa_Western"
+
+# )
+
+
+# combine_regions <- function(data, other_regions, cols_range) {
+#   other_combined <- data %>%
+#     filter(region %in% other_regions) %>%
+#     group_by(landleaf, year) %>%
+#     summarise(across(all_of(cols_range), ~ sum(.x, na.rm = TRUE)), .groups = 'drop') %>%
+#     mutate(region = "Others")
+#     
+#   
+#   combined_data <- data %>%
+#     filter(!region %in% other_regions) %>%
+#     bind_rows(other_combined)
+#   
+#   return(combined_data)
+# }
+
+# Apply the function to SSP585 and SSP126
+
+# land.alloc.data.table_combine_diff_s_R10 <- combine_regions(land.alloc.data.table_combine_diff_s, other_regions, 2:11)
+
+
+```
+
+```{r S4 spatial plot data preperation abs diff with ori, and forest role}
+
+unique_landtype <- unique(merge_alltype$landleaf)
+
+
+# "biomass"，，"grass"，"otherarable"，"pasture (grazed)"，"pasture (other)"，"rock and desert"，"shrubs"，"urban"，"tundra" ,"crops"，"forest (managed)"，"forest (unmanaged)"  
+
+
+
+#############################################################################
+# relative diff##############################################################
+#############################################################################
+
+
+# total_region_area <-merge_alltype%>%
+#   filter(year == 2015)%>%
+#   group_by(region)%>%
+#   summarise(total_area = sum(ori))%>%
+#   ungroup()
+
+# merge_alltype <-land.alloc.data.table_combine_diff_s_R10 %>% 
+#   # left_join(data_sf, by = c("region" = "reg_nm" ))%>% 
+#   filter(year == 2100)%>%
+#   #dplyr::select(c("region","landleaf","year","SSP1_diff","SSP2_diff","SSP3_diff","SSP4_diff","SSP5_diff"))%>%
+#   left_join(total_region_area,by=c("region"))
+
+
+merge_alltype <- merge_alltype %>%
+  mutate(landleaf = gsub("forest \\(managed\\)", "Managed forest", landleaf)) %>%
+  mutate(landleaf = gsub("forest \\(unmanaged\\)", "Unmanaged forest", landleaf))%>%
+  mutate(landleaf = gsub("pasture \\(other\\)", "Unmanaged pasture", landleaf))%>%
+  mutate(landleaf = gsub("pasture \\(grazed\\)", "Managed pasture", landleaf))%>%
+  mutate(landleaf = gsub("grass", "Grass", landleaf))%>%
+  mutate(landleaf = gsub("shrub", "Shrub", landleaf))%>%
+  # mutate(landleaf = gsub("rock and desert", "Rock and desert", landleaf))%>%
+  # mutate(landleaf = gsub("urban", "Urban", landleaf))%>%
+  # mutate(landleaf = gsub("tundra", "Tundra", landleaf))%>%
+  mutate(landleaf = gsub("Biomass", "Bioenergy", landleaf))%>%
+  mutate(landtype = gsub("Biomass", "Bioenergy", landtype))
+
+
+```
+
+```{r color}
+
+u_type<-unique(merge_alltype$landleaf)
+
+# Convert to factor and set levels in the desired order
+merge_alltype$landtype <- factor(merge_alltype$landleaf, levels = c(u_type[7], u_type[8],u_type[4],u_type[5],u_type[1],u_type[3],u_type[6],u_type[9],u_type[2]))
+
+
+
+# Get the Paired color palette with 12 colors
+landleaf_colors_full <- brewer.pal(name = "Paired", n = 12)
+
+# Select colors 1 to 10 and color 12
+landleaf_colors <- c(landleaf_colors_full[1:9])
+
+# landleaf_colors_area <- c("forest" = landleaf_colors[1], "crop" = "yellow", "urban" = "red", "water" = "blue")
+
+
+
+
+
+
+landleaf_order = c(u_type[7], u_type[8],u_type[4],u_type[5],u_type[1],u_type[3],u_type[6],u_type[9],u_type[2])
+```
+
+
+```{r functions and common input}
+
+clean_data <- function(data) {
+  data %>% mutate(across(everything(), ~ifelse(is.na(.), 0, .)))
+}
+##########################################################
+alltype_ssp_plot <- function(data, y_col, title_label, annotation_label, show_legend = TRUE, show_x_label = TRUE, show_x_ticks = TRUE,x_min,x_max,x_break,y_lab,h_just = 7.2,v_just = 1.5) {
+  legend_setting <- if (show_legend) "right" else "none"
+  
+  x_label_text <- if(show_x_label) "Region" else ""
+  axis_text_x <- if(show_x_ticks) element_text(size = 17) else element_blank()
+
+  p <- ggplot(data, aes(x = region, y = !!sym(y_col), fill = factor(landleaf, levels = landleaf_order) )) +
+    geom_bar(stat = "identity", color = NA) +
+    xlab(x_label_text) +
+    ylab(y_lab) +
+    geom_hline(yintercept = 0, color = "black", lwd = 0.2) +
+    scale_y_continuous(breaks = seq(x_min, x_max, by = x_break), labels = label_number(), limits = c(x_min-x_break*0.1, x_max+x_break*0.1)) +
+    coord_flip() +
+    labs(title = title_label, fill = "Land use types") +  # Updated line to change legend title
+    theme_base() +
+    theme(panel.grid = element_blank(), panel.background = element_rect(fill = "white", colour = NA),
+          plot.background = element_rect(fill = "white", colour = NA), plot.title = element_text(face = "bold",hjust = 0.5, size = 17),
+          axis.title.x = element_text(size = 17), axis.title.y = element_blank(), axis.text.x = element_text(size = 15),
+          axis.text.y = axis_text_x, axis.ticks.y = element_blank(),
+          legend.position = legend_setting, legend.title = element_text(size = 17), legend.text = element_text(size = 17)) +
+    annotate("text", x = Inf, y = Inf, label = annotation_label, hjust = h_just, vjust = v_just, size = 6) +
+    # scale_fill_brewer(palette = "Paired")
+  scale_fill_manual(values = landleaf_colors) 
+  return(p)
+}
+##########################################################
+alltype_ssp_plot_CO2 <- function(data, y_col, title_label, annotation_label, show_legend = TRUE, show_x_label = TRUE, show_x_ticks = TRUE,x_min,x_max,x_break,y_lab,h_just = 7.2,v_just = 1.5) {
+  legend_setting <- if (show_legend) "right" else "none"
+  
+  x_label_text <- if(show_x_label) "Region" else ""
+  axis_text_x <- if(show_x_ticks) element_text(size = 17) else element_blank()
+
+ p <- ggplot(data, aes(x = region, y = !!sym(y_col), fill = factor(landleaf, levels = landleaf_order))) +
+  geom_bar(stat = "identity", color = NA) +
+  xlab(x_label_text) +
+  ylab(y_lab) +
+  geom_hline(yintercept = 0, color = "black", lwd = 0.2) +
+  scale_y_continuous(breaks = seq(x_min, x_max, by = x_break), labels = label_number(), limits = c(x_min - x_break * 0.1, x_max + x_break * 0.1)) +
+  coord_flip() +
+  labs(title = expression(bold(CO[2])), fill = "Land use types") +  # Title is now bold
+  theme_base() +
+  theme(
+    panel.grid = element_blank(),
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background = element_rect(fill = "white", colour = NA),
+    plot.title = element_text(face = "bold", hjust = 0.5, size = 17),  # Title already set to bold
+    axis.title.x = element_text(size = 17),
+    axis.title.y = element_blank(),
+    axis.text.x = element_text(size = 15),
+    axis.text.y = axis_text_x,
+    axis.ticks.y = element_blank(),
+    legend.position = legend_setting,
+    legend.title = element_text(size = 17),
+    legend.text = element_text(size = 17)
+  ) +
+  annotate("text", x = Inf, y = Inf, label = annotation_label, hjust = h_just, vjust = v_just, size = 6) +
+  scale_fill_manual(values = landleaf_colors)
+  return(p)
+}
+
+######################
+region_order <- read.csv(paste0(figure_save_path, "region_order_R12.csv")) %>%
+  dplyr::select(-X) %>%
+  rename(region_order = x) %>%
+  filter(!region_order %in% other_regions)# %>%
+  # add_row(region_order = "Others", .before = 1)  # Add "Others" at the top
+
+
+region_order <-region_order$region_order
+
+
+# Convert 'region' in 'merge_alltype' to a factor with levels in the order computed
+merge_alltype$region <- factor(merge_alltype$region, levels = region_order)
+
+
+
+```
+
+
+
+```{r vertical bar for all type ori re to region area 2100-2015}
+
+# titles <- c("SSP1", "SSP2", "SSP3", "SSP4", "SSP5")
+# annotation_labels <- c("(a)", "(b)", "(c)", "(d)", "(e)")
+write.csv(merge_alltype,paste0(
+    figure_save_path,
+    "Fig43_merge_alltype_2foring_mean_",
+    scenario,
+    fig_case_name,
+    ".csv"
+  ))
+
+x_min<- -650
+x_max <- 650
+x_break <- 650
+
+
+
+
+check1<-merge_alltype%>%
+  dplyr::select(region, landleaf, year,CO2_diff)
+
+
+
+p1_oret <- alltype_ssp_plot_CO2(
+  data = merge_alltype, 
+  y_col = "CO2_diff", 
+  title_label = "CO2", 
+  annotation_label = "(a)", 
+  show_legend = FALSE,  # Set to FALSE to hide the legend, TRUE to show it
+  show_x_label = TRUE,
+  show_x_ticks = TRUE,
+  x_min,
+  x_max,
+  x_break,
+  "",
+ h_just = 7.9,
+  v_just=21.4
+)
+
+p2_oret <- alltype_ssp_plot(
+  data = merge_alltype, 
+  y_col = "temp_precipi_diff", 
+  title_label = "Climate change", 
+  annotation_label = "(b)", 
+  show_legend = FALSE,  # Set to FALSE to hide the legend, TRUE to show it
+  show_x_label = FALSE,
+  show_x_ticks = FALSE,
+  x_min,
+  x_max,
+  x_break,
+  "",
+ h_just = 7.9,
+  v_just=21.4
+)
+
+p3_oret <- alltype_ssp_plot(
+  data = merge_alltype, 
+  y_col = "Ndep_diff", 
+  title_label = "N deposition", 
+  annotation_label = "(c)", 
+  show_legend = TRUE,  # Set to FALSE to hide the legend, TRUE to show it
+  show_x_label = FALSE,
+  show_x_ticks = FALSE,
+  x_min,
+  x_max,
+  x_break,
+  "",
+  h_just = 8.2,
+  v_just=21.4
+)
+
+
+
+
+
+#
+# write.csv(land.alloc.data.table_combine_diff_s,"N:/E/new laptop2/PHD/my_2023_maunscript/Table&Figure/Figure/new group map for manuscipt/LULCC spatial re diff vertical bar/land.alloc.data.table_combine_diff_s.csv")
+
+
+
+##############################
+
+p_oret_combined_SSPs <- (p1_oret | p2_oret | p3_oret )
+
+# p_oret_combined_SSPs <- p1_oret | p2_oret | p3_oret | p4_oret | p5_oret
+
+
+p_oret_combined_with_text <- cowplot::ggdraw() +
+                        cowplot::draw_plot(p_oret_combined_SSPs) +
+                          cowplot::draw_text("Difference in area (thousand km²)", 
+                                  x = 0.5, 
+                                  y = 1, 
+                                  hjust = 0.65,
+                                   vjust = 28.5,
+                                  size = 17)  # Specify text directly as the first argument
+
+
+
+
+ggsave(
+  paste0(
+    figure_save_path,
+    "Fig43_LULCC_spatial_alltype_CC_components_diff_for_2forcing_mean_vertical_bar_",
+     
+    
+    scenario,
+    fig_case_name,
+    ".svg"
+  ),
+  plot = p_oret_combined_with_text ,
+  width = 25*0.5,
+  height = 10*0.5,
+  device = "svg"
+)
+
+ggsave(
+  filename = paste0(
+    figure_save_path,
+    "Fig43_LULCC_spatial_alltype_CC_components_diff_for_2forcing_mean_vertical_bar_",
+     
+    scenario,
+    fig_case_name,".pdf"  # Change the file extension to .pdf
+  ),
+  plot = p_oret_combined_with_text,
+ width = 25*0.5,
+  height = 10*0.5,
+  device = "pdf"  # Specify the PDF device
+)
+
+ggsave(
+  paste0(
+    figure_save_path,
+  "Fig43_LULCC_spatial_alltype_CC_components_diff_for_2forcing_mean_vertical_bar_",
+   
+  scenario,
+    fig_case_name,
+    ".tif"  # Changed file extension to .tif
+  ),
+  plot = p_oret_combined_with_text, 
+ width = 25*0.5,
+  height = 10*0.5,
+  dpi = 300,
+  device = "tiff"  # Set device to tiff
+)
+  
+ggsave(
+  filename = paste0(
+    figure_save_path,
+    "Fig43_LULCC_spatial_alltype_CC_components_diff_for_2forcing_mean_vertical_bar_",
+     
+    scenario,
+    fig_case_name,".png"  # Change the file extension to .pdf
+  ),
+  plot = p_oret_combined_with_text,
+ width = 25*0.5,
+  height = 10*0.5,
+  device = "png"  # Specify the PDF device
+)
+
+
+```
+
+

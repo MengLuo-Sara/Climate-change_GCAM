@@ -1,0 +1,692 @@
+---
+title: "try_RGCAM"
+author: "Meng"
+date: "2023-09-25"
+output: html_document
+---
+
+
+### content
+
+## SSP1, 3 using tolerance 10e-7
+
+## prepare
+# knit
+  S0 knit
+# path package function
+  S1 set path and install package
+  S2 save_result function
+# read database
+  S3 get data from GCAM database
+  
+## plot
+# test for cost change
+  
+# querylist_land[1]
+  S5_2 aggregated land_allocation time series group plot (for exclude_PROPBIO vs ori)
+  S5 aggregated land_allocation time series plot
+  S6 aggregated land_allocation time series spatial map
+# querylist_land[4]  
+  S7 ag production by tech time series plot
+  S8 ag production by tech time series spatial map
+# draft
+old, echo = FALSE
+  
+  
+  
+
+
+
+```{r S0 knit, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r S1 set path and install package}
+
+require(devtools)
+#Please use this in console if needed: install_github('JGCRI/rgcam', build_vignettes=TRUE, force =TRUE)
+
+
+library(tidyverse)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+library(sf)
+library(svglite)
+library(cowplot)
+library(gridExtra)
+library(ggthemes)
+library(scales) # for the percentage format on y-axis
+library(RColorBrewer)
+
+
+## chen lab desktop
+# root <- "O:/"
+## new laptop
+root <- "D:/"
+
+version_name <- "_new_agb_bgb_v1"
+
+
+## database_basexdb/
+# output_dir <- paste0(root, "E/Data/", sep='') 
+figure_save_path <- paste0(root,"E/new laptop2/PHD/my_2024_1_manuscript/Figure&table/figure/compare_GCAM_out/", sep='') 
+in_csv_dir <- paste0(root,"E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/GCAM_db_extact_dat/CSV/")
+
+# read shp file
+shp_path <- paste0(root, "E/new laptop2/PHD/GCAM/boundary/gcam_boundaries_moirai_3p1_0p5arcmin_wgs84/gcam_boundaries_moirai_3p1_0p5arcmin_wgs84/main_outputs/region_boundaries_moirai_combined_3p1_0p5arcmin.shp")
+# plot(data_sf)
+data_sf <- st_read(shp_path)
+
+
+
+
+```
+
+
+```{r S2 save_result function}
+save_csv_result <- function(result_DF, save_file_name,row_names) {
+  
+  
+  full_save_path<-paste0(
+    figure_save_path,
+    save_file_name,
+    version_name,
+    ".csv"
+  )
+  
+if (row_names == TRUE) {
+write.csv(result_DF,full_save_path, row.names = TRUE)
+} else {
+write.csv(result_DF,full_save_path, row.names = FALSE)
+}
+
+}
+```
+
+```{r S3 read scenario and variable name}
+
+
+case_names_list <-
+  c( 
+    
+    "v3_ori",
+    ### SSP585
+    "v3_classic_gfdl_default_updateall_orifor_fixed",
+    "v3_classic_gfdl_default_updateall_fixed",
+    "v3_classic_gfdl_2015co2_updateall_orifor_fixed",
+    "v3_classic_gfdl_2015co2_updateall_fixed",
+    "v3_classic_gfdl_ssp585ndep_updateall_orifor_fixed",
+    "v3_classic_gfdl_ssp585ndep_updateall_fixed"#,
+    ##
+    # "v3_classic_ukesm_default_updateall_orifor_fixed",
+    # "v3_classic_ukesm_default_updateall_fixed",
+    # "v3_classic_ukesm_2015co2_updateall_orifor_fixed",
+    # "v3_classic_ukesm_2015co2_updateall_fixed",
+    # "v3_classic_ukesm_ssp585ndep_updateall_orifor_fixed",
+    # "v3_classic_ukesm_ssp585ndep_updateall_fixed"
+  )
+case_short_names_list <- c(
+  ### SSP370 or SSP126
+  ### SSP585
+    "ori",
+    "gfdl_default_updateall_orifor",
+    "gfdl_default_updateall",
+    "gfdl_2015co2_updateall_orifor",
+    "gfdl_2015co2_updateall",
+    "gfdl_ssp585ndep_updateall_orifor",
+    "gfdl_ssp585ndep_updateall"#,
+    ##
+    # "ukesm_default_updateall_orifor",
+    # "ukesmdefault_updateall",
+    # "ukesm_2015co2_updateall_orifor",
+    # "ukesm_2015co2_updateall",
+    # "ukesm_ssp585ndep_updateall_orifor",
+    # "ukesm_ssp585ndep_updateall"
+)
+
+
+varlist_1 <-
+  c(
+    'LUC.emissions.by.region' ,
+    'detailed.land.allocation' ,
+    'aggregated.land.allocation' ,
+    'ag.commodity.prices' ,
+    'CO2.concentrations' ,
+    'total.climate.forcing' ,
+    'global.mean.temperature' ,
+    'net.terrestrial.C.uptake' ,
+    'CO2.emissions.by.region' ,
+    'CO2.emissions.by.sector.excluding.resource.production' ,
+    'CO2.sequestration.by.sector' ,
+    'CO2.sequestration.by.tech' ,
+    'nonCO2.emissions.by.region',
+    'nonCO2.emissions.by.sector.excluding.resource.production' ,
+    'nonCO2.emissions.by.resource.production',
+    ## new added
+    'ag.production.by.crop.type',
+    'ag.production.by.subsector.land.use.region)',
+    'ag.production.by.tech',
+    'ag.tech.variable.cost',
+    'ag.tech.yield',
+    'ag.tech.yield.in.a.specified.land.region'
+  )
+
+
+
+scenario_set<-"SSP585"
+SSP_name<-"SSP585"
+```
+
+# querylist_land[1] time series plot
+
+```{r S4 process data time series data and save as csv}
+# read_and_join_files_var123 <- function(var, scenario_set, case_names_list, case_short_names_list, in_csv_dir) {
+#   result <- read.csv(paste0(in_csv_dir, var, ".", scenario_set, "_", case_names_list[1], ".csv")) %>%
+#     rename(!!case_short_names_list[1] := value)
+#   
+#   for (i in 2:length(case_names_list)) {
+#     scenario_value <-  "8p5"
+#     if (!is.na(scenario_value)) {
+#       temp <- read.csv(paste0(in_csv_dir, var, ".", scenario_set, "_", case_names_list[i], ".csv")) %>%
+#         mutate(scenario = scenario_value) %>%
+#         rename(!!case_short_names_list[i] := value)
+#     } else {
+#       temp <- read.csv(paste0(in_csv_dir, var, ".", scenario_set, "_", case_names_list[i], ".csv")) %>%
+#         rename(!!case_short_names_list[i] := value)
+#     }
+#     result <- left_join(result, temp, by = c("Units", "scenario", "region", "landleaf", "year"))
+#   }
+#   
+#   result <- result %>% filter(year >= 2015)
+#   return(result)
+# }
+# 
+# read_and_join_files_var6 <- function(var, scenario_set, case_names_list, case_short_names_list, in_csv_dir) {
+#   result <- read.csv(paste0(in_csv_dir, var, ".", scenario_set, "_", case_names_list[1], ".csv")) %>%
+#     rename(!!case_short_names_list[1] := value)
+#   
+#   for (i in 2:length(case_names_list)) {
+#     scenario_value <-  "8p5"
+#     if (!is.na(scenario_value)) {
+#       temp <- read.csv(paste0(in_csv_dir, var, ".", scenario_set, "_", case_names_list[i], ".csv")) %>%
+#         mutate(scenario = scenario_value) %>%
+#         rename(!!case_short_names_list[i] := value)
+#     } else {
+#       temp <- read.csv(paste0(in_csv_dir, var, ".", scenario_set, "_", case_names_list[i], ".csv")) %>%
+#         rename(!!case_short_names_list[i] := value)
+#     }
+#     result <- left_join(result, temp, by = c("Units", "scenario", "year"))
+#   }
+#   
+#   result <- result %>% filter(year >= 2015)
+#   return(result)
+# }
+# 
+# read_and_join_files_var4 <- function(var, scenario_set, case_names_list, case_short_names_list, in_csv_dir) {
+#   result <- read.csv(paste0(in_csv_dir, var, ".", scenario_set, "_", case_names_list[1], ".csv")) %>%
+#     rename(!!case_short_names_list[1] := value)
+#   
+#   for (i in 2:length(case_names_list)) {
+#     scenario_value <-  "8p5"
+#     if (!is.na(scenario_value)) {
+#       temp <- read.csv(paste0(in_csv_dir, var, ".", scenario_set, "_", case_names_list[i], ".csv")) %>%
+#         mutate(scenario = scenario_value) %>%
+#         rename(!!case_short_names_list[i] := value)
+#     } else {
+#       temp <- read.csv(paste0(in_csv_dir, var, ".", scenario_set, "_", case_names_list[i], ".csv")) %>%
+#         rename(!!case_short_names_list[i] := value)
+#     }
+#     result <- left_join(result, temp, by = c("Units", "scenario","region","sector", "year"))
+#   }
+#   
+#   result <- result %>% filter(year >= 2015)
+#   return(result)
+# }
+# 
+# 
+# 
+# read_and_join_files_var18 <- function(var, scenario_set, case_names_list, case_short_names_list, in_csv_dir) {
+#   result <- read.csv(paste0(in_csv_dir, var, ".", scenario_set, "_", case_names_list[1], ".csv")) %>%
+#     rename(!!case_short_names_list[1] := value)
+#   
+#   for (i in 2:length(case_names_list)) {
+#     scenario_value <-  "8p5"
+#     if (!is.na(scenario_value)) {
+#       temp <- read.csv(paste0(in_csv_dir, var, ".", scenario_set, "_", case_names_list[i], ".csv")) %>%
+#         mutate(scenario = scenario_value) %>%
+#         rename(!!case_short_names_list[i] := value)
+#     } else {
+#       temp <- read.csv(paste0(in_csv_dir, var, ".", scenario_set, "_", case_names_list[i], ".csv")) %>%
+#         rename(!!case_short_names_list[i] := value)
+#     }
+#     result <- left_join(result, temp, by = c("Units", "scenario", "year","region","sector","subsector","technology","output"))
+#   }
+#   
+#   result <- result %>% filter(year >= 2015)
+#   return(result)
+# }
+# 
+# if (scenario_set %in% c("SSP585")) {
+#   LUC.emissions.by.region_SSP_combines <- read_and_join_files_var123(varlist_1[1], scenario_set, case_names_list, case_short_names_list, in_csv_dir)
+#   detailed.land.allocation_SSP_combines <- read_and_join_files_var123(varlist_1[2], scenario_set, case_names_list, case_short_names_list, in_csv_dir)
+#   aggregated.land.allocation_SSP_combines <- read_and_join_files_var123(varlist_1[3], scenario_set, case_names_list, case_short_names_list, in_csv_dir)
+#   ag.commodity.prices_SSP_combines <- read_and_join_files_var4(varlist_1[4], scenario_set, case_names_list, case_short_names_list, in_csv_dir)
+#   total.climate.forcing_SSP_combines <- read_and_join_files_var6(varlist_1[6], scenario_set, case_names_list, case_short_names_list, in_csv_dir)
+#   ag.production.by.tech_SSP_combines <- read_and_join_files_var18(varlist_1[18], scenario_set, case_names_list, case_short_names_list, in_csv_dir)
+# }
+# 
+# write.csv(LUC.emissions.by.region_SSP_combines,paste0(figure_save_path,"LUC.emissions.by.region_",scenario_set,"_gfdl_climate_vars_combines.csv"))
+# write.csv(detailed.land.allocation_SSP_combines,paste0(figure_save_path,"detailed.land.allocation_",scenario_set,"_gfdl_climate_vars_combines.csv"))
+# write.csv(aggregated.land.allocation_SSP_combines,paste0(figure_save_path,"aggregated.land.allocation_",scenario_set,"_gfdl_climate_vars_combines.csv"))
+# write.csv(ag.commodity.prices_SSP_combines,paste0(figure_save_path,"ag.commodity.prices_",scenario_set,"_gfdl_climate_vars_combines.csv"))
+# write.csv(total.climate.forcing_SSP_combines,paste0(figure_save_path,"total.climate.forcing_",scenario_set,"_gfdl_climate_vars_combines.csv"))
+# write.csv(ag.production.by.tech_SSP_combines,paste0(figure_save_path,"ag.production.by.tech_",scenario_set,"_gfdl_climate_vars_combines.csv"))
+
+# aggregated.land.allocation_SSP_combines<-read.csv(paste0(figure_save_path,"aggregated.land.allocation_",scenario_set,"_combines.csv"),row.names = "FALSE")
+
+# LUC.emissions.by.region_SSP_combines
+# detailed.land.allocation_SSP_combines
+# aggregated.land.allocation_SSP_combines
+# ag.commodity.prices_SSP_combines
+# total.climate.forcing_SSP_combines
+# ag.production.by.tech_SSP_combines
+```
+
+
+## plotting
+```{r fig plotting & saving function}
+
+######################################################
+create_time_series_plot <- function(data, title_suffix = "",title_main = "Time Series",y_title = "Value") {
+    ggplot(data, aes(x = year, y = value, color = case)) +
+    geom_line() +
+    scale_color_brewer(palette = "Dark2", type = "qual", 
+                       limits = unique(data$case)) +
+    theme_minimal() +
+    labs(title = paste(title_main, title_suffix),
+         x = "Year",
+         y = y_title,
+         color = "Case") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+
+
+
+
+
+  
+#########################################
+save_plot_in_formats <- function(plot, path, base_filename, case_name, width, height) {
+  # Define the formats and their specific settings
+  formats <- list(
+    svg = list(ext = "svg", device = "svg", dpi = NULL),
+    pdf = list(ext = "pdf", device = "pdf", dpi = NULL),
+    png = list(ext = "png", device = "png", dpi = 300),
+    tif = list(ext = "tif", device = "tiff", dpi = 300)
+  )
+  # Loop through each format and save the plot
+  for (format in names(formats)) {
+    file_path <- paste0(path, base_filename, case_name,"_",".", formats[[format]]$ext)
+    # Check if dpi is needed
+    if (is.null(formats[[format]]$dpi)) {
+      ggsave(
+        file_path,
+        plot = plot,
+        width = width,
+        height = height,
+        device = formats[[format]]$device
+      )
+    } else {
+      ggsave(
+        file_path,
+        plot = plot,
+        width = width,
+        height = height,
+        dpi = formats[[format]]$dpi,
+        device = formats[[format]]$device
+      )
+    }
+  }
+}
+
+```
+
+### total climate forcing ###################
+only gfdl
+```{r S9 total.climate.forcing climate vars combines plotting}
+
+long_total.climate.forcing_SSP_combines<-read.csv(paste0(figure_save_path,"total.climate.forcing_",scenario_set,"_gfdl_climate_vars_combines.csv"),row.names = "FALSE")
+
+plot_var_name<-"total.climate.forcing"
+
+###############################################
+long_total.climate.forcing_SSP_combines <- total.climate.forcing_SSP_combines%>%
+  group_by(Units,scenario,year)%>%
+  summarise(across(ori:gfdl_ssp585ndep_updateall, sum, na.rm = TRUE))%>%
+  ungroup%>%
+  pivot_longer(cols = ori:gfdl_ssp585ndep_updateall, 
+               names_to = "case", 
+               values_to = "value")%>%
+  distinct()
+
+# gfdl_2015co2_updateall_orifor,
+# gfdl_2015co2_updateall,
+# gfdl_ssp585ndep_updateall_orifor,
+# gfdl_ssp585ndep_updateall,
+
+long_total.climate.forcing_climate_var_diff <-
+  total.climate.forcing_SSP_combines %>%
+  group_by(Units, scenario, year) %>%
+  summarise(across(ori:gfdl_ssp585ndep_updateall, sum, na.rm = TRUE)) %>%
+  ungroup %>%
+  mutate(
+    gfdl_updateall_co2 = gfdl_default_updateall - gfdl_2015co2_updateall,
+    gfdl_updateall_ndep = gfdl_ssp585ndep_updateall - gfdl_default_updateall,
+    gfdl_updateall_precip_temp = gfdl_2015co2_updateall - ori
+    # gfdl_updateall_co2 = (gfdl_default_updateall-gfdl_default_updateall_orifor) - (gfdl_2015co2_updateall-gfdl_2015co2_updateall_orifor),
+    # gfdl_updateall_ndep = (gfdl_ssp585ndep_updateall-gfdl_ssp585ndep_updateall_orifor) - (gfdl_default_updateall-gfdl_default_updateall_orifor),
+    # gfdl_updateall_precip_temp = (gfdl_2015co2_updateall- ori)-(gfdl_2015co2_updateall_orifor - ori)
+    # 
+  ) %>%
+  dplyr::select(-c(4:10)) %>%
+  pivot_longer(
+    cols = gfdl_updateall_co2:gfdl_updateall_precip_temp,
+    names_to = "case",
+    values_to = "value"
+  ) %>%
+  distinct()
+
+
+
+long_total.climate.forcing_climate_var_diff_re <- total.climate.forcing_SSP_combines%>%
+  group_by(Units,scenario,year)%>%
+  summarise(across(ori:gfdl_ssp585ndep_updateall, sum, na.rm = TRUE))%>%
+  ungroup%>%
+   mutate(
+    gfdl_updateall_co2 = if_else(gfdl_2015co2_updateall == 0, 0, (gfdl_default_updateall / gfdl_2015co2_updateall) - 1),
+    gfdl_updateall_ndep = if_else(gfdl_default_updateall == 0, 0, (gfdl_ssp585ndep_updateall / gfdl_default_updateall) - 1),
+    gfdl_updateall_precip_temp = if_else(ori == 0, 0, (gfdl_2015co2_updateall / ori) - 1)
+         )%>%
+  dplyr::select(-c(4:10))%>%
+  pivot_longer(cols = gfdl_updateall_co2:gfdl_updateall_precip_temp, 
+               names_to = "case", 
+               values_to = "value")%>%
+  distinct()%>%
+  mutate(value=value*100)
+
+
+
+#####################################################
+# Use the function to create plot g1
+g1 <-
+  create_time_series_plot(
+    long_total.climate.forcing_SSP_combines,
+    title_main = "Time Series",
+    y_title = "Total climate forcing",
+    title_suffix = "of total climate forcing"
+  )
+
+# Use the function to create plot g2
+g2 <-
+  create_time_series_plot(
+    long_total.climate.forcing_climate_var_diff,
+    title_main = "climate vars impact",
+    y_title = "Total climate forcing",
+    title_suffix = paste0("under",scenario_set,"(Diff)")
+  )
+
+g3 <-
+  create_time_series_plot(
+    long_total.climate.forcing_climate_var_diff_re,
+    title_main = "climate vars relative impact",
+    y_title = "Total climate forcing",
+    title_suffix = paste0("under",scenario_set,"(relative Diff)")
+  )
+
+
+
+###################################
+base_filename1 <- paste0("Fig8_",plot_var_name,"_",scenario_set,"_climate_vars_gfdl")
+base_filename2 <- paste0("Fig8_",plot_var_name,"_",scenario_set,"_climate_vars_impact_gfdl")
+base_filename3 <- paste0("Fig8_",plot_var_name,"_",scenario_set,"_climate_vars_re_impact_gfdl")
+
+plot_width <- 25 * 0.25
+plot_height<- 20 * 0.25
+
+
+
+# Call the function
+save_plot_in_formats(
+  plot = g1,
+  path = paste0(figure_save_path,"total forcing/"),
+  base_filename = base_filename1,
+  case_name = version_name,
+  width = plot_width,
+  height = plot_height
+)
+
+save_plot_in_formats(
+  plot = g2,
+  path = paste0(figure_save_path,"total forcing/"),
+  base_filename = base_filename2,
+  case_name = version_name,
+  width = plot_width,
+  height = plot_height
+)
+
+save_plot_in_formats(
+  plot = g3,
+  path = paste0(figure_save_path,"total forcing/"),
+  base_filename = base_filename3,
+  case_name = version_name,
+  width = plot_width,
+  height = plot_height
+)
+
+
+
+
+```
+both gfdl and ukesm
+```{r S10 total.climate.forcing_SSP_combines plotting SSP370&SSP126}
+# # total.climate.forcing_SSP_combines<-read.csv(paste0(figure_save_path,"total.climate.forcing_",scenario_set,"_combines.csv"))#,row.names = "FALSE"
+# 
+# #if(scenario_set == "SSP370"){
+# if(scenario_set %in% c("SSP126","SSP370")){
+# plot_var_name<-"total.climate.forcing"
+# 
+# ###############################################
+# long_total.climate.forcing_SSP_combines <- total.climate.forcing_SSP_combines%>%
+#   group_by(Units,scenario,year)%>%
+#    ### update this when there are more sub_scenario (e.g. all update_except forest) finished
+#   summarise(across(ori:classic_ukesm_default_updateall, sum, na.rm = TRUE))%>%
+#   ungroup%>%
+#   ### update this when there are more sub_scenario (e.g. all update_except forest) finished
+#   pivot_longer(cols = ori:classic_ukesm_default_updateall, 
+#                names_to = "case", 
+#                values_to = "value")%>%
+#   distinct()
+# 
+# 
+# 
+# long_total.climate.forcing_SSP_combines_RCP_diff <- total.climate.forcing_SSP_combines%>%
+#   group_by(Units,scenario,year)%>%
+#    ### update this when there are more sub_scenario (e.g. all update_except forest) finished
+#   summarise(across(ori:classic_ukesm_default_updateall, sum, na.rm = TRUE))%>%
+#   ungroup%>%
+#    ### update this when there are more sub_scenario (e.g. all update_except forest) finished
+#   mutate(classic_gfdl_default_updateall_ori = classic_gfdl_default_updateall - ori,
+#          classic_gfdl_default_updateall_orifor_ori = classic_gfdl_default_updateall_orifor-ori,
+#          classic_ukesm_default_updateall_ori = classic_ukesm_default_updateall - ori,
+#          classic_ukesm_default_updateall_orifor_ori = classic_ukesm_default_updateall_orifor-ori,
+#          
+#          )%>%
+#   ### update this when there are more sub_scenario (e.g. all update_except forest) finished
+#   dplyr::select(-c(4:8))%>%
+#   ### update this when there are more sub_scenario (e.g. all update_except forest) finished
+#   pivot_longer(cols = classic_gfdl_default_updateall_ori:classic_ukesm_default_updateall_orifor_ori, 
+#                names_to = "case", 
+#                values_to = "value")%>%
+#   distinct()
+# 
+# long_total.climate.forcing_SSP_combines_forrole_diff <- total.climate.forcing_SSP_combines%>%
+#   group_by(Units,scenario,year)%>%
+#   summarise(across(ori:classic_ukesm_default_updateall, sum, na.rm = TRUE))%>%
+#   ungroup%>%
+#   mutate(
+#          classic_gfdl_default_updateall_classic_gfdl_default_updateall_orifor = classic_gfdl_default_updateall - classic_gfdl_default_updateall_orifor,
+#          classic_ukesm_default_updateall_classic_ukesm_default_updateall_orifor = classic_ukesm_default_updateall - classic_ukesm_default_updateall_orifor
+# 
+#          )%>%
+#   dplyr::select(-c(4:8))%>%
+#   pivot_longer(cols = classic_gfdl_default_updateall_classic_gfdl_default_updateall_orifor:classic_ukesm_default_updateall_classic_ukesm_default_updateall_orifor,
+#                names_to = "case",
+#                values_to = "value")%>%
+#   distinct()
+# 
+# long_total.climate.forcing_SSP_combines_RCP_diff_re <- total.climate.forcing_SSP_combines%>%
+#   group_by(Units,scenario,year)%>%
+#   ### update this when there are more sub_scenario (e.g. all update_except forest) finished
+#   summarise(across(ori:classic_ukesm_default_updateall, sum, na.rm = TRUE))%>%
+#   ungroup%>%
+#   mutate(
+#     classic_gfdl_default_updateall_ori = if_else(ori == 0, 0, (classic_gfdl_default_updateall / ori) - 1),
+#     classic_gfdl_default_updateall_orifor_ori = if_else(ori == 0, 0, (classic_gfdl_default_updateall_orifor / ori) - 1),
+#     classic_ukesm_default_updateall_ori = if_else(ori == 0, 0, (classic_ukesm_default_updateall / ori) - 1),
+#     classic_ukesm_default_updateall_orifor_ori = if_else(ori == 0, 0, (classic_ukesm_default_updateall_orifor / ori) - 1)
+#          )%>%
+#   ### update this when there are more sub_scenario (e.g. all update_except forest) finished
+#   dplyr::select(-c(4:8))%>%
+#   ### update this when there are more sub_scenario (e.g. all update_except forest) finished
+#   pivot_longer(cols = classic_gfdl_default_updateall_ori:classic_ukesm_default_updateall_orifor_ori, 
+#                names_to = "case", 
+#                values_to = "value")%>%
+#   distinct()
+# 
+# long_total.climate.forcing_SSP_combines_forrole_diff_re <- total.climate.forcing_SSP_combines%>%
+#   group_by(Units,scenario,year)%>%
+#   summarise(across(ori:classic_ukesm_default_updateall, sum, na.rm = TRUE))%>%
+#   ungroup%>%
+#   mutate(
+#     classic_gfdl_default_updateall_classic_gfdl_default_updateall_orifor = if_else(classic_gfdl_default_updateall_orifor == 0, 0, (classic_gfdl_default_updateall / classic_gfdl_default_updateall_orifor) - 1),
+#     classic_ukesm_default_updateall_classic_ukesm_default_updateall_orifor = if_else(classic_ukesm_default_updateall_orifor == 0, 0, (classic_ukesm_default_updateall / classic_ukesm_default_updateall_orifor) - 1)
+#          )%>%
+#   dplyr::select(-c(4:8))%>%
+#   pivot_longer(cols = classic_gfdl_default_updateall_classic_gfdl_default_updateall_orifor:classic_ukesm_default_updateall_classic_ukesm_default_updateall_orifor,
+#                names_to = "case",
+#                values_to = "value")%>%
+#   distinct()
+# 
+# 
+# #####################################################
+# # Use the function to create plot g1
+# g1 <-
+#   create_time_series_plot(
+#     long_total.climate.forcing_SSP_combines,
+#     title_main = "Time Series",
+#     y_title = "Total climate forcing",
+#     title_suffix = "of total climate forcing"
+#   )
+# 
+# # Use the function to create plot g2
+# g2 <-
+#   create_time_series_plot(
+#     long_total.climate.forcing_SSP_combines_RCP_diff,
+#     title_main = "Time Series",
+#     y_title = "Total climate forcing",
+#     title_suffix = paste0("under",scenario_set,"Diff")
+#   )
+# 
+# g3 <-
+#   create_time_series_plot(
+#     long_total.climate.forcing_SSP_combines_RCP_diff_re,
+#     title_main = "Time Series",
+#     y_title = "Total climate forcing",
+#     title_suffix = paste0("under",scenario_set,"relative Diff")
+#   )
+# 
+# g4 <-
+# create_time_series_plot(
+#     long_total.climate.forcing_SSP_combines_forrole_diff,
+#     title_main = "Time Series",
+#     y_title = "Total climate forcing",
+#     title_suffix = paste0("under",scenario_set,"forrole Diff")
+#   )
+# 
+# g5 <-
+#   create_time_series_plot(
+#     long_total.climate.forcing_SSP_combines_forrole_diff_re,
+#     title_main = "Time Series",
+#     y_title = "Total climate forcing",
+#     title_suffix = paste0("under",scenario_set,"forrole relative Diff")
+#   ) 
+# 
+# 
+# 
+# ###################################
+# base_filename1 <- paste0("Fig5_",plot_var_name,"_",scenario_set,"_group")
+# base_filename2 <- paste0("Fig5_",plot_var_name,"_",scenario_set,"_diff_group_withRCP")
+# base_filename3 <- paste0("Fig5_",plot_var_name,"_",scenario_set,"_re_diff_group_withRCP")
+# base_filename4 <- paste0("Fig5_",plot_var_name,"_",scenario_set,"_diff_group_forrole")
+# base_filename5 <- paste0("Fig5_",plot_var_name,"_",scenario_set,"_re_diff_group_forrole")
+# plot_width <- 25 * 0.5
+# plot_height<- 20 * 0.5
+# 
+# 
+# 
+# # Call the function
+# save_plot_in_formats(
+#   plot = g1,
+#   path = figure_save_path,
+#   base_filename = base_filename1,
+#   case_name = version_name,
+#   width = plot_width,
+#   height = plot_height
+# )
+# 
+# save_plot_in_formats(
+#   plot = g2,
+#   path = figure_save_path,
+#   base_filename = base_filename2,
+#   case_name = version_name,
+#   width = plot_width,
+#   height = plot_height
+# )
+# 
+# save_plot_in_formats(
+#   plot = g3,
+#   path = figure_save_path,
+#   base_filename = base_filename3,
+#   case_name = version_name,
+#   width = plot_width,
+#   height = plot_height
+# )
+# 
+# save_plot_in_formats(
+#   plot = g4,
+#   path = figure_save_path,
+#   base_filename = base_filename4,
+#   case_name = version_name,
+#   width = plot_width,
+#   height = plot_height
+# )
+# 
+# save_plot_in_formats(
+#   plot = g5,
+#   path = figure_save_path,
+#   base_filename = base_filename5,
+#   case_name = version_name,
+#   width = plot_width,
+#   height = plot_height
+# )
+
+# }
+```

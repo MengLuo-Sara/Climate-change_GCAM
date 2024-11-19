@@ -1,0 +1,477 @@
+---
+title: "GTM_4_dim_var_process"
+author: "Meng Luo"
+date: "2023-08-29"
+output: html_document
+    toc: true
+    toc_float: true
+---
+# use the mature age's FP as the input for GCAM
+
+
+#########################################################
+## update of the this version
+# add FULL_matrix_for_MFP_continue
+
+# Content
+## link to github
+  S0 link to github
+## Setting Up
+  S1 needed R package and dir
+ 
+  
+  
+  
+  
+# link to github
+```{r S0 link to github , include=FALSE}
+# knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Setting Up
+## Loading Needed R Packages and Setting Directory
+
+```{r S1 needed R package and dir }
+library(tidyverse)
+library(tidyr)
+#install.packages("rlang")
+library(rlang)
+library(dplyr)
+library(gcamdata)
+library('drake')
+library(patchwork)
+library(ggplot2)
+library(cowplot)
+
+
+## run this in console devtools::load_all()
+
+Fig_num_name<-"Fig40_C_scalar"
+version_num <-"5"
+case_name<-"_climate_productivityC"
+###############################################################################################
+ 
+case<-"CC_components"
+
+
+
+
+## end of need to modify 
+# read from hard disk ##############################################################
+# # Chen lab desktop
+# # root<-"O:/"
+# 
+# # 2023 laptop
+# root<-"D:/"
+# 
+# 
+# main_Sagb_path <- paste0(root, "E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/annual_wmean_aboveCD/region_5ymean_alltypes_wrapper/")
+# 
+# 
+# main_Sbgb_path <- paste0(root, "E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/annual_wmean_belowCD/region_5ymean_alltypes_wrapper/")
+# 
+# 
+# 
+# XML_version <- paste0(version_num ,case_name,"_ssp",case) 
+
+####
+
+# main_GTM_mid_xml_path  <-"E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/GCAM data system_forestversion/useful/"
+# main_my_XML_path <- "E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/GCAM data system_forestversion/new_XML/"
+# # produce outputs in GCAM 7.0 release package 
+# main_v7_XML_path <- "E/Docker_GCAM_v7_forest/gcam-master/input/gcamdata/xml/"
+# 
+# fig_save_path <- paste0(root,"E/new laptop2/PHD/my_2024_1_manuscript/Figure&table/figure/check_npp_rh_scaler_4in1_file/")
+
+# Harmolandtype_area_main_path<-paste0(root,"E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/")
+# read from 2023 laptop  ##############################################################
+
+# 2023 laptop
+# root <- "C:/MengLuo/chapter 2_backup/"
+
+# NAS
+root <- "Z:/Meng/back_up_all/9_updates/"
+
+
+main_Sagb_path <- paste0(root, "climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/annual_wmean_aboveCD/region_5ymean_alltypes_wrapper/")
+
+
+main_Sbgb_path <- paste0(root, "climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/annual_wmean_belowCD/region_5ymean_alltypes_wrapper/")
+
+XML_version <- paste0(version_num ,case_name,"_ssp",case) 
+
+
+#####
+
+main_GTM_mid_xml_path  <-"climate_FPC_GCAM/Data/GCAM data system_forestversion/useful/"
+main_my_XML_path <- "climate_FPC_GCAM/Data/GCAM data system_forestversion/new_XML/"
+# produce outputs in GCAM 7.0 release package 
+main_v7_XML_path <- "XML_save/"
+
+fig_save_path <- paste0(root,"my_2024_1_manuscript/Figure&table/figure/check_npp_rh_scaler_4in1_file/")
+
+Harmolandtype_area_main_path<-paste0(root,"climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/")
+
+```
+
+
+## read GTM output txt file
+separate each var and save in csv
+
+# function section
+
+
+```{r S2 function save_result }
+save_csv_result <- function(result_DF, result_csv_name,row_names) {
+
+full_save_path <- paste0(root,main_GTM_path, result_csv_name)
+if (row_names == TRUE) {
+write.csv(result_DF,full_save_path, row.names = TRUE)
+} else {
+write.csv(result_DF,full_save_path, row.names = FALSE)
+}
+
+}
+```
+
+# preprocessing for GCAM XML
+## I am right here
+
+
+```{r S3 automatically read the file}
+
+# agb_files <- list.files(path = main_Sagb_path, pattern = ".*_fullscalerc3c4.*\\.csv$", full.names = TRUE)
+# 
+# 
+# bgb_files <- list.files(path = main_Sbgb_path, pattern = ".*_fullscalerc3c4.*\\.csv$", full.names = TRUE)
+# 
+# print(agb_files)
+# print(bgb_files)
+```
+
+```{r S4 read the file}
+
+
+
+### diff CC component
+sub_case_names<-c("CO2","N deposition","precipi and temp")
+## AGB ###########################################
+GFDL_agb_data<-read.csv(paste0(fig_save_path,"Fig20_check_aboveCD_long_gmean_combinedgfdl.csv"))%>%
+ dplyr::select(-X)%>%
+  rename(mean_gfdl = mean, sd_gfdl = sd)
+UKESM_agb_data<-read.csv(paste0(fig_save_path,"Fig20_check_aboveCD_long_gmean_combinedukesm.csv"))%>%
+  dplyr::select(-X)%>%
+  rename(mean_ukesm = mean, sd_ukesm = sd)
+  
+
+
+check_aboveCD_long_gmean_combined<-GFDL_agb_data%>%
+  left_join(UKESM_agb_data, by = c("harm_type","year","scenario"))%>%
+  mutate(mean = (mean_ukesm+mean_gfdl)/2,
+         sd = (sd_ukesm+sd_gfdl)/2)%>%
+        dplyr::select(-mean_gfdl,-mean_ukesm,-sd_ukesm,-sd_gfdl)
+
+write.csv( check_aboveCD_long_gmean_combined,paste0(fig_save_path,"Fig40_check_aboveCD_long_gmean_combined_mean_gfdl_ukesm.csv"))
+
+## BGB ###########################################
+
+GFDL_bgb_data<- read.csv(paste0(fig_save_path,"Fig20_check_belowCD_long_gmean_combinedgfdl.csv"))%>%
+  dplyr::select(-X)%>%
+  rename(mean_gfdl = mean, sd_gfdl = sd)
+UKESM_bgb_data<- read.csv(paste0(fig_save_path,"Fig20_check_belowCD_long_gmean_combinedukesm.csv"))%>%
+  dplyr::select(-X)%>%
+  rename(mean_ukesm = mean, sd_ukesm = sd)
+
+
+check_belowCD_long_gmean_combined<-GFDL_bgb_data%>%
+  left_join(UKESM_bgb_data, by = c("harm_type","year","scenario"))%>%
+  mutate(mean = (mean_ukesm+mean_gfdl)/2,
+         sd = (sd_ukesm+sd_gfdl)/2)%>%
+        dplyr::select(-mean_gfdl,-mean_ukesm,-sd_ukesm,-sd_gfdl)
+
+write.csv( check_belowCD_long_gmean_combined,paste0(fig_save_path,"Fig40_check_belowCD_long_gmean_combined_mean_gfdl_ukesm.csv"))
+
+```
+
+
+
+
+```{r S6 data_process_plot functions}
+process_in_file <- function(file, harmolandtype_area) {
+    # Read the CSV file
+    in_Sagb <- read.csv(file, check.names = FALSE)
+  
+    # Process the data
+    in_Sagb %>%
+      dplyr::select(-3, -2) %>%
+      filter(harm_type != "Other") %>%
+      left_join(harmolandtype_area, by = c("out_reg_code", "out_lu_code", "harm_type")) %>%
+      dplyr::select(-7, -6) %>%
+      group_by(region, harm_type) %>%
+      mutate(region_pft_area = sum(pft_area_total, na.rm = TRUE)) %>%
+      mutate(region_pft_area_weight = pft_area_total / region_pft_area) %>%
+      summarize(across(
+        .cols = 4:22,
+        .fns = ~ weighted.mean(.x, w = region_pft_area_weight, na.rm = TRUE)
+      )) %>%
+      ungroup() %>%
+      pivot_longer(cols = 3:ncol(.),
+                   names_to = "year",
+                   values_to = "scalar") %>%
+      mutate(year = as.numeric(year)) %>%
+      na.omit()
+}
+
+process_global_data <- function(data) {
+     # data<-in_Sagb_co2
+  # write.csv(data,"data.csv")
+   
+  data %>%
+    dplyr::select(-3) %>%
+    filter(harm_type == "Forest") %>%
+    group_by(child.nodes) %>%
+    pivot_wider(names_from = "year",values_from = "scalar")%>%
+    ungroup()%>%
+    dplyr::select(-2) %>%
+    left_join(in_Harmolandtype_area, by = c("out_reg_code", "out_lu_code", "harm_type")) %>%
+    group_by(harm_type) %>%
+    mutate(global_pft_area = sum(pft_area_total, na.rm = TRUE)) %>%
+    mutate(global_pft_area_weight = pft_area_total / global_pft_area) %>%
+    summarize(across(
+    .cols = 7:23,
+    .fns = list(
+      mean = ~ weighted.mean(.x, w = global_pft_area_weight, na.rm = TRUE),
+      sd = ~ sqrt(weighted.mean((.x - weighted.mean(.x, w = global_pft_area_weight, na.rm = TRUE))^2, w = global_pft_area_weight, na.rm = TRUE))
+    )
+  )) %>%
+  ungroup() %>%
+  pivot_longer(cols = ends_with("_mean") | ends_with("_sd"),
+               names_to = "year_stat",
+               values_to = "value") %>%
+  separate(year_stat, into = c("year", "stat"), sep = "_", convert = TRUE) %>%
+  pivot_wider(names_from = stat, values_from = value) %>%
+  mutate(year = as.numeric(year)) %>%
+  select(harm_type, year, mean, sd) %>%
+    na.omit()
+}
+
+
+    scenario_colors <- c("CO2" = "#B85800", "N_dep" = "#008C2F", "tempperci" = "#1B51F2")
+#############################
+ create_global_plot <- function(data,
+                               y_var_m,
+                               y_var_sd,
+                               ylimits = c(0.82, 1.75),
+                               if_title,
+                               t_title,
+                               if_xtitle = FALSE,
+                               x_title,
+                               if_ytitle = FALSE,
+                               y_title,
+                               ifxlabel = TRUE,
+                               lab,
+                               hj = 10,
+                               scenario_colors = NULL) {
+  
+  
+  
+
+
+  # data <- check_aboveCD_long_gmean_combined
+  # y_var_m <- "mean"
+  # y_var_sd <- "sd"
+  # ylimits <- c(0.82, 1.75)
+  # if_title <- FALSE
+  # t_title <- "AGB Carbon scalar"
+  # if_xtitle <- TRUE
+  # x_title <- "Year"
+  # if_ytitle <- TRUE
+  # y_title <- "Agb Carbon scalar"
+  # ifxlabel <- FALSE
+  # lab <- "(a)"
+  # hj <- 10
+  # scenario_colors <- NULL
+  
+  
+  
+  # Default color palette if none provided
+  if (is.null(scenario_colors)) {
+    
+     # scenario_colors <- c("CO2" = "#65C927", "N_dep" = "#C76811", "tempperci" = "#2890E6")
+     
+    scenario_colors <- c("CO2" = "#B85800", "N_dep" = "#008C2F", "tempperci" = "#1B51F2")
+     
+     
+  }
+  
+  p <- ggplot(data, aes(x = as.numeric(year), y = !!sym(y_var_m), group = scenario)) +
+    geom_ribbon(aes(ymin = !!sym(y_var_m) - !!sym(y_var_sd) / 2, 
+                    ymax = !!sym(y_var_m) + !!sym(y_var_sd) / 2, 
+                    fill = scenario), color = NA, alpha = 0.2, show.legend = FALSE) +
+    geom_line(aes(color = scenario), size = 1, show.legend = FALSE) +
+    scale_color_manual(values = scenario_colors) +
+    scale_fill_manual(values = scenario_colors) +
+    labs(title = if (if_title) t_title else NULL,
+         x = if (if_xtitle) x_title else NULL,
+         y = if (if_ytitle) y_title else NULL,
+         color = "Scenarios") +
+    theme_minimal() +
+    theme(panel.border = element_rect(color = "black", fill = NA, size = 1),
+          legend.position = "none",
+          plot.title = element_text(hjust = 0.5, face = "bold")) +
+    ylim(ylimits) +
+    annotate("text",
+             x = Inf,
+             y = Inf,
+             label = lab,
+             hjust = hj,
+             vjust = 1.5,
+             size = 4)
+
+  if (!if_ytitle) {
+    p <- p +
+      theme(axis.text.y = element_blank(),
+            axis.ticks.y = element_blank())
+  }
+
+  if (ifxlabel) {p<-p
+    
+  }else if (ifxlabel == FALSE) {
+  p <- p +
+      theme(axis.text.x = element_blank(),
+            axis.ticks.x = element_blank())}
+  
+  return(p)
+}
+
+
+##############################
+# Function to save the regional combined plots for each CC component
+# Define plot size
+
+save_combined_plot <- function(plot, name_suffix,wid_size=15,hei_size=10) {
+  file_base <- paste0(fig_save_path, "/",Fig_num_name, "_combined_", name_suffix, "_regions_v", version_num)
+  
+  ggsave(paste0(file_base, ".svg"), plot = plot, width = wid_size, height = hei_size, units = "in")
+  ggsave(paste0(file_base, ".pdf"), plot = plot, width = wid_size, height = hei_size, units = "in")
+  ggsave(paste0(file_base, ".png"), plot = plot, width = wid_size, height = hei_size, units = "in", dpi = 300)
+  ggsave(filename = paste0(file_base, ".tif"), plot = plot, width = wid_size, height = hei_size, units = "in", device = "tiff", dpi = 300)
+}
+```
+
+
+
+
+```{r S9 global plot & save}
+
+## AGB  ###################################################################################
+
+pagb <- create_global_plot(
+  check_aboveCD_long_gmean_combined,
+  y_var_m = "mean",
+  y_var_sd = "sd",
+  ylimits = c(-0.285, 0.535),
+  if_title = FALSE,
+  t_title = "AGB carbon scalar difference",
+  if_xtitle = TRUE,
+  x_title = "Year",
+  if_ytitle = TRUE,
+  y_title = "AGB carbon scalar difference",
+  ifxlabel = TRUE,
+  lab = "(a)",
+  hj = 16.6)
+
+
+check_aboveCD_long_gmean_combined$scenario <- factor(
+  check_aboveCD_long_gmean_combined$scenario,
+  levels = c("CO2", "tempperci", "N_dep")  # Reorder as desired
+)
+
+
+p_global_legend <- ggplot(
+  check_aboveCD_long_gmean_combined,
+  aes(
+    x = as.numeric(year),
+    y = mean,
+    group = scenario,
+    color = scenario
+  )
+) +
+  geom_ribbon(
+    aes(
+      ymin = mean - sd / 2,
+      ymax = mean + sd / 2,
+      fill = scenario
+    ),
+    color = NA,
+    alpha = 0.2
+  ) +
+  geom_line(aes(color = scenario), size = 1) +
+  scale_color_manual(
+    values = scenario_colors,
+    labels = c("CO2" = expression(CO[2]), "tempperci" = "Climate change", "N_dep" = "N deposition")
+  ) +
+  scale_fill_manual(
+    values = scenario_colors,
+     labels = c("CO2" = expression(CO[2]), "tempperci" = "Climate change", "N_dep" = "N deposition")
+  ) +
+  labs(
+    title = "",
+    x = "",
+    y = "",
+    color = "Climate Change Components"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.border = element_rect(
+      color = "black",
+      fill = NA,
+      size = 1
+    ),
+    plot.title = element_text(hjust = 0.5)
+  ) +
+  guides(color = guide_legend("Global Change\nComponents"),
+         fill = guide_legend("Global Change\nComponents", override.aes = list(linetype = 1)))
+
+
+
+
+global_legend <- cowplot::get_legend(p_global_legend)
+
+## BGB #########################################################
+
+
+  
+  pbgb <- create_global_plot(
+  check_belowCD_long_gmean_combined,
+  y_var_m = "mean",
+  y_var_sd = "sd",
+  ylimits = c(-0.17, 0.09),
+  if_title = FALSE,
+  t_title = "BGB carbon scalar difference",
+  if_xtitle = TRUE,
+  x_title = "Year",
+  if_ytitle = TRUE,
+  y_title = "BGB carbon scalar difference",
+  ifxlabel = TRUE,
+  lab = "(b)",
+  hj = 16.3)
+  
+  
+
+combined_global_agbbgb_plot <- plot_grid(
+  pagb,pbgb,  # Vertical stack of AGB and BGB plots
+  global_legend,                 # Legend
+  ncol = 3,                      # Two columns: one for plots, one for the legend
+  rel_widths = c(1,1, 0.5)         # Relative widths, giving most space to the plots and less to the legend
+)
+
+
+save_combined_plot(combined_global_agbbgb_plot, paste0("Sagbbgb_global_CC_component_mean_gfdl_ukesm"),wid_size=20*0.5,hei_size=10*0.5)
+
+
+```
+
+
+
+

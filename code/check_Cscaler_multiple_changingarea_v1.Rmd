@@ -1,0 +1,288 @@
+---
+title: "GTM_4_dim_var_process"
+author: "Meng Luo"
+date: "2023-08-29"
+output: html_document
+    toc: true
+    toc_float: true
+---
+# use the mature age's FP as the input for GCAM
+
+
+#########################################################
+## update of the this version
+# add FULL_matrix_for_MFP_continue
+
+# Content
+## link to github
+  S0 link to github
+## Setting Up
+  S1 needed R package and dir
+ 
+  
+  
+  
+  
+# link to github
+```{r S0 link to github , include=FALSE}
+# knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Setting Up
+## Loading Needed R Packages and Setting Directory
+
+```{r S1 needed R package and dir }
+library(tidyverse)
+library(tidyr)
+#install.packages("rlang")
+library(rlang)
+library(dplyr)
+library(gcamdata)
+library('drake')
+## run this in console devtools::load_all()
+
+#################################################################################################
+## need to modify 
+ 
+# Chen lab desktop
+root<-"O:/"
+
+# 2023 laptop
+root<-"D:/"
+
+## ssp1
+
+
+
+
+## ssp3
+
+
+
+
+## ssp5
+scenario<-"585" #  n for SSPn e.g. 1 for SSP1
+version_num <-"1"
+case_name<-"_climate_productivityC"
+
+
+
+
+## end of need to modify 
+#################################################################################################
+
+
+
+main_Sagb_path <- paste0(root, "E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/annual_wmean_aboveCD/region_5ymean_alltypes_wrapper/")
+
+
+main_Sbgb_path <- paste0(root, "E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/annual_wmean_belowCD/region_5ymean_alltypes_wrapper/")
+
+
+# choose aggregation methods #####################
+# 1 is agg A1 first, then LC1
+# 2 is agg LC1 first, then A1
+# 3 is using FP for the mature age
+
+
+XML_version <- paste0(version_num ,case_name,"_ssp",scenario) 
+
+## end need to modify 
+#########################
+
+
+
+
+
+
+
+main_GTM_mid_xml_path  <-"E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/GCAM data system_forestversion/useful/"
+main_my_XML_path <- "E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/GCAM data system_forestversion/new_XML/"
+# produce outputs in GCAM 7.0 release package 
+main_v7_XML_path <- "E/Docker_GCAM_v7_forest/gcam-master/input/gcamdata/xml/"
+
+fig_save_path <- paste0(root,"E/new laptop2/PHD/my_2024_1_manuscript/Figure&table/figure/check_npp_rh_scaler_4in1_file/")
+
+```
+
+
+## read GTM output txt file
+separate each var and save in csv
+
+# function section
+
+
+```{r S2 function save_result }
+save_csv_result <- function(result_DF, result_csv_name,row_names) {
+
+full_save_path <- paste0(root,main_GTM_path, result_csv_name)
+if (row_names == TRUE) {
+write.csv(result_DF,full_save_path, row.names = TRUE)
+} else {
+write.csv(result_DF,full_save_path, row.names = FALSE)
+}
+
+}
+```
+
+# preprocessing for GCAM XML
+## I am right here
+
+
+```{r S2 automatically read the file}
+
+
+
+
+agb_files <- list.files(path = main_Sagb_path, pattern = ".*_fullscalerc3c4.*\\.csv$", full.names = TRUE)
+
+
+bgb_files <- list.files(path = main_Sbgb_path, pattern = ".*_fullscalerc3c4.*\\.csv$", full.names = TRUE)
+
+print(agb_files)
+print(bgb_files)
+```
+
+
+```{r S3 read detailed land area in each subregion }
+detailed_land_area_main_path<-paste0(root,"E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/GCAM_db_extact_dat/CSV/")
+
+in_all_gfdl_area<-read.csv(paste0(detailed_land_area_main_path,"detailed.land.allocation.SSP126_v3_classic_gfdl_default_updateall_fixed.csv"))%>%
+  rename(all_area=value)
+  
+in_orifor_gfdl_area<-read.csv(paste0(detailed_land_area_main_path,"detailed.land.allocation.SSP126_v3_classic_gfdl_default_updateall_orifor_fixed.csv"))%>%
+  rename(orifor_area=value)
+  
+
+in_ori_area<-read.csv(paste0(detailed_land_area_main_path,"detailed.land.allocation.SSP126_v3_ori.csv"))%>%
+ rename(ori_area=value)
+
+
+
+in_area_combined <-in_ori_area%>%
+  left_join(in_orifor_gfdl_area, by=c("Units","scenario","region","landleaf","year"))%>%
+  left_join(in_all_gfdl_area, by=c("Units","scenario","region","landleaf","year"))%>%
+  filter(year>=2015)
+
+  
+
+
+```
+
+```{r read the C density of above, below}
+```
+
+
+
+```{r plot and save bgb scaler group map}
+
+# for (data_idx in 5:6) {
+#   # data_idx<-1
+#   in_Sbgb_file <- bgb_files[data_idx]
+#   in_Sbgb <- read.csv(in_Sbgb_file, check.names = FALSE)
+# 
+#   bgb_file_name <- basename(in_Sbgb_file)
+#   desired_name_part <- sub("_fullscaler.*", "", bgb_file_name)
+# 
+#   check_belowCD_long <- in_Sbgb %>%
+#     dplyr::select(-3,-2) %>%
+#     filter( harm_type!= "Other")%>%
+#     left_join(in_Harmolandtype_area,
+#               by = c("out_reg_code", "out_lu_code", "harm_type")) %>%
+#     
+#     group_by(region, harm_type) %>%
+#     mutate(region_pft_area = sum(pft_area_total, na.rm = TRUE)) %>%
+#     mutate(region_pft_area_weight = pft_area_total / region_pft_area) %>%
+#     summarize(across(
+#       .cols = 8:22,
+#       .fns = ~ weighted.mean(.x, w = region_pft_area_weight, na.rm = TRUE)
+#     )) %>%
+#     ungroup() %>%
+#     pivot_longer(cols = 3:ncol(.),
+#                  names_to = "year",
+#                  values_to = "scaler") %>%
+#     mutate(year = as.numeric(year)) %>%
+#     na.omit()
+#   
+#   
+#   # Create individual plots
+#   pc3 <- ggplot(check_belowCD_long %>% filter(harm_type == "c3Crop"), aes(x = as.numeric(year), y = scaler, group = region, color = region)) +
+#     geom_line() +
+#     labs(title = paste0("bgb c3Crop scaler_", desired_name_part),
+#          x = "Year",
+#          y = "Value",
+#          color = "Region") +
+#     theme_minimal()
+# 
+#   pc4 <- ggplot(check_belowCD_long %>% filter(harm_type == "c4Crop"), aes(x = as.numeric(year), y = scaler, group = region, color = region)) +
+#     geom_line() +
+#     labs(title = paste0("bgb c4Crop scaler_", desired_name_part),
+#          x = "Year",
+#          y = "Value",
+#          color = "Region") +
+#     theme_minimal()
+# 
+#   pf <- ggplot(check_belowCD_long %>% filter(harm_type == "Forest"), aes(x = as.numeric(year), y = scaler, group = region, color = region)) +
+#     geom_line() +
+#     labs(title = paste0("bgb Forest scaler_", desired_name_part),
+#          x = "Year",
+#          y = "Value",
+#          color = "Region") +
+#     theme_minimal()
+# 
+#   pg <- ggplot(check_belowCD_long %>% filter(harm_type == "Grass"), aes(x = as.numeric(year), y = scaler, group = region, color = region)) +
+#     geom_line() +
+#     labs(title = paste0("bgb Grass scaler_", desired_name_part),
+#          x = "Year",
+#          y = "Value",
+#          color = "Region") +
+#     theme_minimal()
+# 
+#   # Combine the plots into one figure
+#   combined_plot <- (pc3 + pc4) / (pf + pg) +
+#     # plot_layout(guides = 'collect') +
+#     plot_annotation(title = paste0("Combined bgb Scaler_", desired_name_part))
+# 
+#   
+#     # combined_plot <- (pc3 + pc4) / (pf + pg) + plot_annotation(title = paste0("Combined agb scaler_", desired_name_part))
+#   
+#   # Save the combined plot
+#   ggsave(paste0(fig_save_path, "/", desired_name_part, "_combined_Sbgb_regions.svg"), plot = combined_plot, width = 20, height = 20, units = "in")
+#   ggsave(paste0(fig_save_path, "/", desired_name_part, "_combined_Sbgb_regions.png"), plot = combined_plot, width = 20, height = 20, units = "in", dpi = 300)
+# 
+#   ####################################################################
+# 
+#   check_belowCD_long_gmean <- in_Sbgb %>%
+#     dplyr::select(-3, -2) %>%
+#   filter( harm_type!= "Other")%>%
+#     left_join(in_Harmolandtype_area,
+#               by = c("out_reg_code", "out_lu_code", "harm_type")) %>%
+#     
+#     group_by(harm_type) %>%
+#     mutate(global_pft_area = sum(pft_area_total, na.rm = TRUE)) %>%
+#     mutate(global_pft_area_weight = pft_area_total / global_pft_area) %>%
+#     summarize(across(
+#       .cols = 8:22,
+#       .fns = ~ weighted.mean(.x, w = global_pft_area_weight, na.rm = TRUE)
+#     )) %>%
+#     ungroup() %>%
+#     pivot_longer(cols = 3:ncol(.),
+#                  names_to = "year",
+#                  values_to = "scaler") %>%
+#     mutate(year = as.numeric(year)) %>%
+#     na.omit()
+# 
+#   p2 <- ggplot(check_belowCD_long_gmean, aes(x = as.numeric(year), y = scaler, group = harm_type, color = harm_type)) +
+#     geom_line() +
+#     labs(title = paste0("global mean bgb scaler_", desired_name_part),
+#          x = "Year",
+#          y = "Value",
+#          color = "harm_type") +
+#     theme_minimal()
+# 
+#   # Save the global mean plot
+#   ggsave(paste0(fig_save_path, "/", desired_name_part, "_Sbgb_global.svg"), plot = p2, width = 5, height = 5, units = "in")
+#   ggsave(paste0(fig_save_path, "/", desired_name_part, "_Sbgb_global.png"), plot = p2, width = 5, height = 5, units = "in", dpi = 300)
+# }
+
+```

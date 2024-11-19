@@ -1,0 +1,504 @@
+---
+title: "GTM_4_dim_var_process"
+author: "Meng Luo"
+date: "2023-08-29"
+output: html_document
+    toc: true
+    toc_float: true
+---
+# use the mature age's FP as the input for GCAM
+
+
+#########################################################
+## update of the this version
+# add FULL_matrix_for_MFP_continue
+
+# Content
+## link to github
+  S0 link to github
+## Setting Up
+  S1 needed R package and dir
+ 
+  
+  
+  
+  
+# link to github
+```{r S0 link to github , include=FALSE}
+# knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Setting Up
+## Loading Needed R Packages and Setting Directory
+
+```{r S1 needed R package and dir }
+library(tidyverse)
+library(tidyr)
+#install.packages("rlang")
+library(rlang)
+library(dplyr)
+library(gcamdata)
+library('drake')
+library(patchwork)
+library(ggplot2)
+library(cowplot)
+
+
+## run this in console devtools::load_all()
+
+Fig_num_name<-"Fig3_C_scalar"
+version_num <-"4_C34_crops"
+case_name<-"_climate_productivityC"
+#################################################################################################
+## need to modify 
+# plot_case<-1 # diff SSPs
+plot_case<-1 # diff CC component
+ 
+cases<-c("3SSPs")
+
+case<-cases[plot_case]
+
+
+## end of need to modify 
+# read from hard disk ##############################################################
+# # Chen lab desktop
+# # root<-"O:/"
+# 
+# # 2023 laptop
+# root<-"D:/"
+# 
+# 
+# main_Sagb_path <- paste0(root, "E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/annual_wmean_aboveCD/region_5ymean_alltypes_wrapper/")
+# 
+# 
+# main_Sbgb_path <- paste0(root, "E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/annual_wmean_belowCD/region_5ymean_alltypes_wrapper/")
+# 
+# 
+# 
+# XML_version <- paste0(version_num ,case_name,"_ssp",case) 
+
+####
+
+# main_GTM_mid_xml_path  <-"E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/GCAM data system_forestversion/useful/"
+# main_my_XML_path <- "E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/GCAM data system_forestversion/new_XML/"
+# # produce outputs in GCAM 7.0 release package 
+# main_v7_XML_path <- "E/Docker_GCAM_v7_forest/gcam-master/input/gcamdata/xml/"
+# 
+# fig_save_path <- paste0(root,"E/new laptop2/PHD/my_2024_1_manuscript/Figure&table/figure/check_npp_rh_scaler_4in1_file/")
+
+# Harmolandtype_area_main_path<-paste0(root,"E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/")
+# read from 2023 laptop  ##############################################################
+
+# 2023 laptop
+# root <- "C:/MengLuo/chapter 2_backup/"
+
+# NAS
+root <- "Z:/Meng/back_up_all/9_updates/"
+
+main_Sagb_path <- paste0(root, "climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/annual_wmean_aboveCD/region_5ymean_alltypes_wrapper/")
+
+
+main_Sbgb_path <- paste0(root, "climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/annual_wmean_belowCD/region_5ymean_alltypes_wrapper/")
+
+XML_version <- paste0(version_num ,case_name,"_ssp",case) 
+
+
+#####
+
+main_GTM_mid_xml_path  <-"climate_FPC_GCAM/Data/GCAM data system_forestversion/useful/"
+main_my_XML_path <- "climate_FPC_GCAM/Data/GCAM data system_forestversion/new_XML/"
+# produce outputs in GCAM 7.0 release package 
+main_v7_XML_path <- "XML_save/"
+
+fig_save_path <- paste0(root,"my_2024_1_manuscript/Figure&table/figure/check_npp_rh_scaler_4in1_file/")
+
+Harmolandtype_area_main_path<-paste0(root,"climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/")
+
+```
+
+
+## read GTM output txt file
+separate each var and save in csv
+
+# function section
+
+
+```{r S2 function save_result }
+save_csv_result <- function(result_DF, result_csv_name,row_names) {
+
+full_save_path <- paste0(root,main_GTM_path, result_csv_name)
+if (row_names == TRUE) {
+write.csv(result_DF,full_save_path, row.names = TRUE)
+} else {
+write.csv(result_DF,full_save_path, row.names = FALSE)
+}
+
+}
+```
+
+# preprocessing for GCAM XML
+## I am right here
+
+
+```{r S2 automatically read the file}
+
+# agb_files <- list.files(path = main_Sagb_path, pattern = ".*_fullscalerc3c4.*\\.csv$", full.names = TRUE)
+# 
+# 
+# bgb_files <- list.files(path = main_Sbgb_path, pattern = ".*_fullscalerc3c4.*\\.csv$", full.names = TRUE)
+# 
+# print(agb_files)
+# print(bgb_files)
+```
+
+```{r S3 read harmonized land type area in each subregion table }
+
+
+in_forest_area<-read.csv(paste0(Harmolandtype_area_main_path,"Area_weight_forest.csv"))%>%
+  mutate(harm_type="Forest")
+  
+in_c3crop_area<-read.csv(paste0(Harmolandtype_area_main_path,"Area_weight_c3crop.csv"))%>%
+  mutate(harm_type="c3Crop")
+
+in_c4crop_area<-read.csv(paste0(Harmolandtype_area_main_path,"Area_weight_c4crop.csv"))%>%
+  mutate(harm_type="c4Crop")
+
+in_grass_area<-read.csv(paste0(Harmolandtype_area_main_path,"Area_weight_grass.csv"))%>%
+  mutate(harm_type="Grass")
+
+in_Harmolandtype_area <-bind_rows(in_forest_area,in_c3crop_area,in_c4crop_area,in_grass_area)
+  
+
+
+```
+
+```{r S4 read the file}
+
+### diff SSPs
+sub_case_names<-c("SSP126","SSP370","SSP585")
+
+
+agb_file_SSP126_gfdl <- paste0(main_Sagb_path, "classic_gfdl-esm4_w5e5_ssp126_2015soc-from-histsoc_default_fullscalerc3c4_agb_v3.csv")
+agb_file_SSP370_gfdl <- paste0(main_Sagb_path, "classic_gfdl-esm4_w5e5_ssp370_2015soc-from-histsoc_default_fullscalerc3c4_agb_v3.csv")
+agb_file_SSP585_gfdl <- paste0(main_Sagb_path, "classic_gfdl-esm4_w5e5_ssp585_2015soc-from-histsoc_default_fullscalerc3c4_agb_v3.csv")
+## ukesm
+agb_file_SSP126_ukesm <- paste0(main_Sagb_path, "classic_ukesm1-0-ll_w5e5_ssp126_2015soc-from-histsoc_default_fullscalerc3c4_agb_v3.csv")
+agb_file_SSP370_ukesm <- paste0(main_Sagb_path, "classic_ukesm1-0-ll_w5e5_ssp370_2015soc-from-histsoc_default_fullscalerc3c4_agb_v3.csv")
+agb_file_SSP585_ukesm <- paste0(main_Sagb_path, "classic_ukesm1-0-ll_w5e5_ssp585_2015soc-from-histsoc_default_fullscalerc3c4_agb_v3.csv")
+
+
+bgb_file_SSP126_gfdl <- paste0(main_Sbgb_path, "classic_gfdl-esm4_w5e5_ssp126_2015soc-from-histsoc_default_fullscalerc3c4_bgb_v3.csv")
+bgb_file_SSP370_gfdl <- paste0(main_Sbgb_path, "classic_gfdl-esm4_w5e5_ssp370_2015soc-from-histsoc_default_fullscalerc3c4_bgb_v3.csv")
+bgb_file_SSP585_gfdl <- paste0(main_Sbgb_path, "classic_gfdl-esm4_w5e5_ssp585_2015soc-from-histsoc_default_fullscalerc3c4_bgb_v3.csv")
+## ukesm
+bgb_file_SSP126_ukesm <- paste0(main_Sbgb_path, "classic_ukesm1-0-ll_w5e5_ssp126_2015soc-from-histsoc_default_fullscalerc3c4_bgb_v3.csv")
+bgb_file_SSP370_ukesm <- paste0(main_Sbgb_path, "classic_ukesm1-0-ll_w5e5_ssp370_2015soc-from-histsoc_default_fullscalerc3c4_bgb_v3.csv")
+bgb_file_SSP585_ukesm <- paste0(main_Sbgb_path, "classic_ukesm1-0-ll_w5e5_ssp585_2015soc-from-histsoc_default_fullscalerc3c4_bgb_v3.csv")
+
+agb_files_gfdl<-c(agb_file_SSP126_gfdl,agb_file_SSP370_gfdl,agb_file_SSP585_gfdl)
+agb_files_ukesm<-c(agb_file_SSP126_ukesm,agb_file_SSP370_ukesm,agb_file_SSP585_ukesm)
+
+bgb_files_gfdl<-c(bgb_file_SSP126_gfdl,bgb_file_SSP370_gfdl,bgb_file_SSP585_gfdl)
+bgb_files_ukesm<-c(bgb_file_SSP126_ukesm,bgb_file_SSP370_ukesm,bgb_file_SSP585_ukesm)
+##############################
+
+```
+
+```{r S functions}
+# Define a function to process the data
+process_regional_data <- function(file_path, in_Harmolandtype_area) {
+  data <- read.csv(file_path, check.names = FALSE)
+  
+  data %>%
+    dplyr::select(-3, -2) %>%
+    filter(harm_type != "Other") %>%
+    left_join(in_Harmolandtype_area, by = c("out_reg_code", "out_lu_code", "harm_type")) %>%
+    group_by(region, harm_type) %>%
+    mutate(region_pft_area = sum(pft_area_total, na.rm = TRUE)) %>%
+    mutate(region_pft_area_weight = pft_area_total / region_pft_area) %>%
+    summarize(across(
+      .cols = 6:20,
+      .fns = ~ weighted.mean(.x, w = region_pft_area_weight, na.rm = TRUE)
+    )) %>%
+    ungroup() %>%
+    pivot_longer(cols = 3:ncol(.),
+                 names_to = "year",
+                 values_to = "scalar") %>%
+    mutate(year = as.numeric(year)) %>%
+    na.omit()
+}
+
+##########################
+
+save_combined_plot <- function(plot, name_suffix,wid_size=15,hei_size=10) {
+  file_base <- paste0(fig_save_path, "/",Fig_num_name, "_combined_", name_suffix, "_v", version_num)
+  
+  ggsave(paste0(file_base, ".svg"), plot = plot, width = wid_size, height = hei_size, units = "in")
+  ggsave(paste0(file_base, ".pdf"), plot = plot, width = wid_size, height = hei_size, units = "in")
+  ggsave(paste0(file_base, ".png"), plot = plot, width = wid_size, height = hei_size, units = "in", dpi = 300)
+  ggsave(filename = paste0(file_base, ".tif"), plot = plot, width = wid_size, height = hei_size, units = "in", device = "tiff", dpi = 300)
+}
+#########################
+# Function to create individual plots
+# create_regional_plot <- function(data, harm_type, x_label = "", y_label = "", title_suffix = "", ylim_range = c(-0.8, 0.6)) {
+#   ggplot(data %>% filter(harm_type == harm_type), aes(x = as.numeric(year), y = forcing_diff, group = region, color = region)) +
+#     geom_line() +
+#     labs(title = paste0(harm_type, title_suffix),
+#          x = x_label,
+#          y = y_label,
+#          color = "Region") +
+#     theme_minimal() +
+#     theme(
+#       panel.border = element_rect(color = "black", fill = NA, size = 1),
+#       legend.position = "none",
+#       plot.title = element_text(hjust = 0.5)
+#     ) +
+#     ylim(ylim_range)
+# }
+
+############################
+
+
+
+ # Function to process agb files
+process_global_file <- function(data, harmolandtype_area) {
+  
+    data %>%
+    dplyr::select(-3) %>%
+    filter(harm_type != "Other") %>%
+    group_by(child.nodes) %>%
+    pivot_wider(names_from = "year",values_from = "scalar")%>%
+    ungroup()%>%
+    dplyr::select(-2) %>%
+    left_join(in_Harmolandtype_area, by = c("out_reg_code", "out_lu_code", "harm_type")) %>%
+    group_by(harm_type) %>%
+    mutate(global_pft_area = sum(pft_area_total, na.rm = TRUE)) %>%
+    mutate(global_pft_area_weight = pft_area_total / global_pft_area) %>%
+    summarize(across(
+    .cols = 7:23,
+    .fns = list(
+      mean = ~ weighted.mean(.x, w = global_pft_area_weight, na.rm = TRUE),
+      sd = ~ sqrt(weighted.mean((.x - weighted.mean(.x, w = global_pft_area_weight, na.rm = TRUE))^2, w = global_pft_area_weight, na.rm = TRUE))
+    )
+  )) %>%
+  ungroup() %>%
+  pivot_longer(cols = ends_with("_mean") | ends_with("_sd"),
+               names_to = "year_stat",
+               values_to = "value") %>%
+  separate(year_stat, into = c("year", "stat"), sep = "_", convert = TRUE) %>%
+  pivot_wider(names_from = stat, values_from = value) %>%
+  mutate(year = as.numeric(year)) %>%
+  dplyr::select(harm_type, year, mean, sd) %>%
+    na.omit()
+}
+```
+
+
+
+
+```{r S5 plot and save agb scaler group map}
+
+
+
+##########################
+# Initialize an empty list to store plots
+pagb_list <- list()
+agbfignum <- c("(a)","(b)","(c)")
+y_titles<-c("AGB carbon scalar difference","","")
+ahjusts<-c(10,10.01,10.25)
+
+
+for (data_idx in c(1, 2, 3)) {
+  # data_idx<-1
+  
+  
+  # Process the data for GFDL
+  in_Sagb_file_gfdl <- agb_files_gfdl[data_idx]
+  in_Sagb_file_ukesm <- agb_files_ukesm[data_idx]
+  
+  
+  
+    ###########################################
+  
+  
+  # Process each dataset using the function
+  
+  in_Sagb_gfdl<-read.csv(in_Sagb_file_gfdl , check.names = FALSE)%>%
+    pivot_longer(cols = 10:26,names_to = "year",values_to = "gfdl")
+  
+  in_Sagb_ukesm<-read.csv(in_Sagb_file_ukesm , check.names = FALSE)%>%
+    pivot_longer(cols = 10:26,names_to = "year",values_to = "ukesm")
+  
+  aboveCD_global_foring_diff<-in_Sagb_gfdl%>%
+  left_join(in_Sagb_ukesm, by=c("region","child.nodes","above.ground.carbon.density","landtype","subregion","broad_type","harm_type","out_reg_code","out_lu_code","year"))%>%
+  mutate(scalar = ukesm-gfdl)%>%
+  dplyr::select(-c("gfdl","ukesm"))
+  
+  
+  
+  
+   check_aboveCD_global_foring_diff <-
+    process_global_file(aboveCD_global_foring_diff, in_Harmolandtype_area)%>%
+    # replace c3Crop with C3crop, c4Crop with C4crop
+    mutate(harm_type = gsub("c3Crop", "C3 crops", harm_type))%>%
+    mutate(harm_type = gsub("c4Crop", "C4 crops", harm_type))
+   
+   check_aboveCD_global_foring_diff <- rbind(check_aboveCD_global_foring_diff, data.frame(harm_type = "Forest",  year = 2015, mean = 0, sd = 0),data.frame(harm_type = "Grass",  year = 2015, mean = 0, sd = 0),data.frame(harm_type = "C3 crops",  year = 2015, mean = 0, sd = 0),data.frame(harm_type = "C4 crops",  year = 2015, mean = 0, sd = 0))
+  
+  #############
+  pagb_list[[data_idx]] <- ggplot(check_aboveCD_global_foring_diff, aes(x = as.numeric(year), y = mean, group = harm_type, color = harm_type))+
+    geom_ribbon(aes(ymin = mean - sd/2, ymax = mean + sd/2, fill = harm_type), color = NA, alpha = 0.2, show.legend = FALSE) +
+    geom_line(aes(color = harm_type), size = 1, show.legend = FALSE) +
+  labs(title = sub_case_names[data_idx],
+       x = "",
+       y = y_titles[data_idx],
+       color = "Harmonized Types") +
+  theme_minimal() +
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 1),
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        axis.text.x = element_blank(),  # Removes x-axis tick labels
+        axis.ticks.x = element_blank()  # Removes x-axis ticks
+        )    + ylim(c(-0.3, 0.3))+
+    annotate(
+      "text",
+      x = Inf,
+      y = Inf,
+      label = agbfignum[data_idx],
+      hjust = ahjusts[data_idx],
+      vjust = 1.5,
+      size = 4
+    )
+  
+ if (data_idx > 1) {
+  pagb_list[[data_idx]] <- pagb_list[[data_idx]] +
+    theme(axis.text.y = element_blank(),
+          axis.ticks.y = element_blank())
+}
+   
+}
+
+
+
+
+p_global_legend <- ggplot(check_aboveCD_global_foring_diff, aes(x = as.numeric(year), y = mean, group = harm_type, color = harm_type))+
+    geom_ribbon(aes(ymin = mean - sd/2, ymax = mean + sd/2, fill = harm_type), color = NA, alpha = 0.2) +
+    geom_line(aes(color = harm_type), size = 1) +
+  labs(title = sub_case_names[data_idx],
+       x = "",
+       y = y_titles[data_idx],
+       color = "Harmonized Types") +
+  theme_minimal() +
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 1),
+        plot.title = element_text(hjust = 0.5))  +
+  guides(color = guide_legend("Harmonized Types"), fill = guide_legend("Harmonized Types", override.aes = list(linetype = 1)))
+
+
+global_legend <- cowplot::get_legend(p_global_legend)
+
+combined_agb_plots <- wrap_plots(pagb_list, nrow = 1)
+
+```
+
+```{r S6 plot and save bgb scaler group map}
+
+
+
+##########################
+# Initialize an empty list to store plots
+pbgb_list <- list()
+y_titles<-c("BGB carbon scalar difference","","")
+ 
+
+bgbfignum <- c("(d)","(e)","(f)")
+bhjusts<-c(10,10,12.7)
+
+for (data_idx in c(1, 2, 3)) {
+  # data_idx<-1
+  
+  
+  
+  # Process the data for GFDL
+  in_Sbgb_file_gfdl <- bgb_files_gfdl[data_idx]
+  in_Sbgb_file_ukesm <- bgb_files_ukesm[data_idx]
+  
+  
+  
+    ###########################################
+  
+  
+  # Process each dataset using the function
+  
+  in_Sbgb_gfdl<-read.csv(in_Sbgb_file_gfdl , check.names = FALSE)%>%
+    pivot_longer(cols = 10:26,names_to = "year",values_to = "gfdl")
+  
+  in_Sbgb_ukesm<-read.csv(in_Sbgb_file_ukesm , check.names = FALSE)%>%
+    pivot_longer(cols = 10:26,names_to = "year",values_to = "ukesm")
+  
+  belowCD_global_foring_diff<-in_Sbgb_gfdl%>%
+  left_join(in_Sbgb_ukesm, by=c("region","child.nodes","below.ground.carbon.density","landtype","subregion","broad_type","harm_type","out_reg_code","out_lu_code","year"))%>%
+  mutate(scalar = ukesm-gfdl)%>%
+  dplyr::select(-c("gfdl","ukesm"))
+  
+  
+  
+  
+   check_belowCD_global_foring_diff <-
+    process_global_file(belowCD_global_foring_diff, in_Harmolandtype_area)%>%
+    # replace c3Crop with C3crop, c4Crop with C4crop
+    mutate(harm_type = gsub("c3Crop", "C3 crops", harm_type))%>%
+    mutate(harm_type = gsub("c4Crop", "C4 crops", harm_type))
+  
+  
+  check_belowCD_global_foring_diff <- rbind(check_belowCD_global_foring_diff, data.frame(harm_type = "Forest",  year = 2015, mean = 0, sd = 0),data.frame(harm_type = "Grass",  year = 2015, mean = 0, sd = 0),data.frame(harm_type = "C3 crops",  year = 2015, mean = 0, sd = 0),data.frame(harm_type = "C4 crops",  year = 2015, mean = 0, sd = 0))
+  
+  
+  pbgb_list[[data_idx]] <- ggplot(check_belowCD_global_foring_diff, aes(x = as.numeric(year), y = mean, group = harm_type, color = harm_type))+
+    geom_ribbon(aes(ymin = mean - sd/2, ymax = mean + sd/2, fill = harm_type), color = NA, alpha = 0.2, show.legend = FALSE) +
+    geom_line(aes(color = harm_type), size = 1, show.legend = FALSE) +
+  labs(title = NULL,
+       x = "Year",
+       y = y_titles[data_idx],
+       color = "Harmonized Types") +
+  theme_minimal() +
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 1),
+        plot.title = element_text(hjust = 0.5))  + ylim(c(0.87, 1.06)) +
+    annotate(
+      "text",
+      x = Inf,
+      y = Inf,
+      label = bgbfignum[data_idx],
+      hjust = bhjusts[data_idx],
+      vjust = 1.5,
+      size = 4
+    )+ ylim(c(-0.15, 0.15))
+  
+  # Conditionally remove y-axis labels and ticks when data_idx > 1
+if (data_idx > 1) {
+  pbgb_list[[data_idx]] <- pbgb_list[[data_idx]] +
+    theme(axis.text.y = element_blank(),
+          axis.ticks.y = element_blank())
+}
+  
+}
+
+combined_bgb_plots <- wrap_plots(pbgb_list, nrow = 1)
+
+```
+######
+
+```{r agb bgb global combined save}
+agb_bgb_list<-c(pagb_list,pbgb_list)
+combined_global_agbbgb_plots <- wrap_plots(agb_bgb_list, nrow = 2)  # Combine AGB plots into a single row
+
+
+combined_global_agbbgb_plot <- plot_grid(
+  combined_global_agbbgb_plots,  # Vertical stack of AGB and BGB plots
+  global_legend,                 # Legend
+  ncol = 2,                      # Two columns: one for plots, one for the legend
+  rel_widths = c(1, 0.2)         # Relative widths, giving most space to the plots and less to the legend
+)
+
+
+ save_combined_plot(combined_global_agbbgb_plot, "Sagbbgb_global_3SSPs_forcing",wid_size=18*0.5,hei_size=10*0.5)
+ 
+```
