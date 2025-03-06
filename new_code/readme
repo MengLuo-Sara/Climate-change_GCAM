@@ -1,0 +1,2 @@
+This folder provides the updated R, python, and the Matlab code that used in the study. 
+Most of the analyses were conducted using R. Python code is only used to run GCAM, and the Matlab code is only used to conduct the Mann-Kendall Trend Test.
