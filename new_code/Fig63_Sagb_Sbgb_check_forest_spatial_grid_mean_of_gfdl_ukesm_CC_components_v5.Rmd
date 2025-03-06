@@ -1,0 +1,630 @@
+---
+title: "GTM_4_dim_var_process"
+author: "Meng Luo"
+date: "2023-08-29"
+output: html_document
+    toc: true
+    toc_float: true
+---
+# use the mature age's FP as the input for GCAM
+
+
+#########################################################
+## update of the this version
+# add FULL_matrix_for_MFP_continue
+
+# Content
+## link to github
+  S0 link to github
+## Setting Up
+  S1 needed R package and dir
+ 
+  
+  
+  
+  
+# link to github
+```{r S0 link to github , include=FALSE}
+# knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Setting Up
+## Loading Needed R Packages and Setting Directory
+
+```{r S1 needed R package and dir }
+
+#install.packages("drake")
+library('drake')
+#install.packages("cowplot")
+library(cowplot)
+############
+require(devtools)
+#Please use this in console if needed: install_github('JGCRI/rgcam', build_vignettes=TRUE, force =TRUE)
+library (rgcam)
+library(tidyverse)
+library(tidyr)
+
+library(rlang)
+library(dplyr)
+# install.packages("patchwork")
+library(patchwork)
+# install.packages("sf")
+library(sf)
+# install.packages("svglite")
+library(svglite)
+library(cowplot)
+library(gridExtra)
+library(ggthemes)
+library(stringr)
+library(ggplot2)
+library(RColorBrewer)
+
+library(scales)
+
+
+## run this in console devtools::load_all()
+
+
+version_num <-"4_2"
+case_name<-"_climate_productivityC"
+#################################################################################################
+## need to modify 
+# plot_case<-1 # diff SSPs
+plot_case<-1 # diff CC component
+ 
+cases<-c("3SSPs")
+
+case<-cases[plot_case]
+
+
+## end of need to modify 
+# read from hard disk ##############################################################
+# # Chen lab desktop
+# # root<-"O:/"
+# 
+# # 2023 laptop
+# root<-"D:/"
+# 
+# 
+# main_Sagb_path <- paste0(root, "E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/annual_wmean_aboveCD/region_5ymean_alltypes_wrapper/")
+# 
+# 
+# main_Sbgb_path <- paste0(root, "E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/annual_wmean_belowCD/region_5ymean_alltypes_wrapper/")
+# 
+# 
+# 
+# XML_version <- paste0(version_num ,case_name,"_ssp",case) 
+
+####
+
+# main_GTM_mid_xml_path  <-"E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/GCAM data system_forestversion/useful/"
+# main_my_XML_path <- "E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/GCAM data system_forestversion/new_XML/"
+# # produce outputs in GCAM 7.0 release package 
+# main_v7_XML_path <- "E/Docker_GCAM_v7_forest/gcam-master/input/gcamdata/xml/"
+# 
+# fig_save_path <- paste0(root,"E/new laptop2/PHD/my_2024_1_manuscript/Figure&table/figure/check_npp_rh_scaler_4in1_file/")
+
+# Harmolandtype_area_main_path<-paste0(root,"E/new laptop2/PHD/phd_dissertation/climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/")
+# read from 2023 laptop  ##############################################################
+
+# 2023 laptop
+# root <- "C:/MengLuo/chapter 2_backup/"
+
+# NAS
+root <- "Z:/Meng/back_up_all/9_updates/"
+
+########################################################################################
+main_Sagb_path <- paste0(root, "climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/annual_wmean_aboveCD/grid/")
+
+
+main_Sbgb_path <- paste0(root, "climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/annual_wmean_belowCD/grid/")
+
+XML_version <- paste0(version_num ,case_name,"_ssp",case)
+
+
+#####
+
+# main_GTM_mid_xml_path  <-"climate_FPC_GCAM/Data/GCAM data system_forestversion/useful/"
+# main_my_XML_path <- "climate_FPC_GCAM/Data/GCAM data system_forestversion/new_XML/"
+# # produce outputs in GCAM 7.0 release package 
+# main_v7_XML_path <- "XML_save/"
+
+fig_save_path <- paste0(root,"my_2024_1_manuscript/Figure&table/figure/C_scalar_grid_spatial/")
+
+# Harmolandtype_area_main_path<-paste0(root,"climate_FPC_GCAM/Data/ISIMIP3b_processed/GCAM_subregion_mean/")
+
+
+shp_path <- paste0(root, "climate_FPC_GCAM/Code/boundary/gcam_boundaries_moirai_3p1_0p5arcmin_wgs84/gcam_boundaries_moirai_3p1_0p5arcmin_wgs84/main_outputs/boundries5.shp")
+
+data_sf <- st_read(shp_path)
+
+```
+
+
+## read GTM output txt file
+separate each var and save in csv
+
+# function section
+
+
+```{r S2 function save_result }
+save_csv_result <- function(result_DF, result_csv_name,row_names) {
+
+full_save_path <- paste0(root,main_GTM_path, result_csv_name)
+if (row_names == TRUE) {
+write.csv(result_DF,full_save_path, row.names = TRUE)
+} else {
+write.csv(result_DF,full_save_path, row.names = FALSE)
+}
+
+}
+```
+
+# preprocessing for GCAM XML
+## I am right here
+
+
+```{r S2 automatically read the file}
+
+# agb_files <- list.files(path = main_Sagb_path, pattern = ".*_fullscalerc3c4.*\\.csv$", full.names = TRUE)
+# 
+# 
+# bgb_files <- list.files(path = main_Sbgb_path, pattern = ".*_fullscalerc3c4.*\\.csv$", full.names = TRUE)
+# 
+# print(agb_files)
+# print(bgb_files)
+```
+
+```{r S2_2 read the file}
+
+# forcing <- 1 # gfdl
+# forcing <- 2 # ukesm
+
+
+### diff SSPs
+sub_case_names<-c("SSP126","SSP370","SSP585")
+
+# if (forcing == 1){
+  
+# forcing_name2<-"gfdl_"
+
+## gfdl ####################################
+agb_file_SSP585_default_gfdl <- read.csv(paste0(main_Sagb_path, "classic_gfdl-esm4_w5e5_ssp585_2015soc-from-histsoc_default_grid_scale_forest.csv"))%>%
+  dplyr::select(center_lon,center_lat,npp)
+agb_file_SSP585_2015co2_gfdl <- read.csv(paste0(main_Sagb_path, "classic_gfdl-esm4_w5e5_ssp585_2015soc-from-histsoc_2015co2_grid_scale_forest.csv"))%>%
+  dplyr::select(center_lon,center_lat,npp)
+agb_file_SSP585_ndep_gfdl <- read.csv(paste0(main_Sagb_path, "classic_gfdl-esm4_w5e5_ssp585_2015soc-from-histsoc_ssp585ndep_grid_scale_forest.csv"))%>%
+  dplyr::select(center_lon,center_lat,npp)
+
+
+bgb_file_SSP585_default_gfdl <- read.csv(paste0(main_Sbgb_path, "classic_gfdl-esm4_w5e5_ssp585_2015soc-from-histsoc_default_grid_scale_forest.csv"))%>%
+  dplyr::select(center_lon,center_lat,rh_npp)
+bgb_file_SSP585_2015co2_gfdl <- read.csv(paste0(main_Sbgb_path, "classic_gfdl-esm4_w5e5_ssp585_2015soc-from-histsoc_2015co2_grid_scale_forest.csv"))%>%
+  dplyr::select(center_lon,center_lat,rh_npp)
+bgb_file_SSP585_ndep_gfdl <- read.csv(paste0(main_Sbgb_path, "classic_gfdl-esm4_w5e5_ssp585_2015soc-from-histsoc_ssp585ndep_grid_scale_forest.csv"))%>%
+  dplyr::select(center_lon,center_lat,rh_npp)
+
+
+  
+agb_file_SSP585_default_ukesm <- read.csv(paste0(main_Sagb_path, "classic_ukesm1-0-ll_w5e5_ssp585_2015soc-from-histsoc_default_grid_scale_forest.csv"))%>%
+  dplyr::select(center_lon,center_lat,npp)
+agb_file_SSP585_2015co2_ukesm <- read.csv(paste0(main_Sagb_path, "classic_ukesm1-0-ll_w5e5_ssp585_2015soc-from-histsoc_2015co2_grid_scale_forest.csv"))%>%
+  dplyr::select(center_lon,center_lat,npp)
+agb_file_SSP585_ndep_ukesm <- read.csv(paste0(main_Sagb_path, "classic_ukesm1-0-ll_w5e5_ssp585_2015soc-from-histsoc_default_grid_scale_forest.csv"))%>%
+  dplyr::select(center_lon,center_lat,npp)
+
+
+bgb_file_SSP585_default_ukesm <- read.csv(paste0(main_Sbgb_path, "classic_ukesm1-0-ll_w5e5_ssp585_2015soc-from-histsoc_default_grid_scale_forest.csv"))%>%
+  dplyr::select(center_lon,center_lat,rh_npp)
+bgb_file_SSP585_2015co2_ukesm <- read.csv(paste0(main_Sbgb_path, "classic_ukesm1-0-ll_w5e5_ssp585_2015soc-from-histsoc_2015co2_grid_scale_forest.csv"))%>%
+  dplyr::select(center_lon,center_lat,rh_npp)
+bgb_file_SSP585_ndep_ukesm <- read.csv(paste0(main_Sbgb_path, "classic_ukesm1-0-ll_w5e5_ssp585_2015soc-from-histsoc_default_grid_scale_forest.csv"))%>%
+  dplyr::select(center_lon,center_lat,rh_npp)
+
+
+
+agb_file_CC_gfdl<-agb_file_SSP585_default_gfdl%>%
+  rename(default = npp)%>%
+  left_join(agb_file_SSP585_2015co2_gfdl%>%rename(co22015 = npp), by = c("center_lon","center_lat"))%>%
+  distinct()%>%
+  mutate(gfdl = default-co22015)%>%
+  dplyr::select(-default, -co22015)%>%
+   distinct()
+
+agb_file_CO2_gfdl<-agb_file_SSP585_2015co2_gfdl%>%
+  mutate(gfdl = npp-1)%>%
+  dplyr::select(-npp)%>%
+   distinct()
+
+
+agb_file_N_gfdl<-agb_file_SSP585_default_gfdl%>%
+  rename(default = npp)%>%
+  left_join(agb_file_SSP585_ndep_gfdl%>%rename(ndep = npp), by = c("center_lon","center_lat"))%>%
+  distinct()%>%
+  mutate(gfdl = ndep-default)%>%
+  dplyr::select(-default, -ndep)
+
+
+
+agb_file_CC_ukesm<-agb_file_SSP585_default_ukesm%>%
+  rename(default = npp)%>%
+  left_join(agb_file_SSP585_2015co2_ukesm%>%rename(co22015 = npp), by = c("center_lon","center_lat"))%>%
+  distinct()%>%
+  mutate(ukesm = default-co22015)%>%
+  dplyr::select(-default, -co22015)%>%
+   distinct()
+
+agb_file_CO2_ukesm<-agb_file_SSP585_2015co2_ukesm%>%
+  mutate(ukesm = npp-1)%>%
+  dplyr::select(-npp)%>%
+   distinct()
+
+
+agb_file_N_ukesm<-agb_file_SSP585_default_ukesm%>%
+  rename(default = npp)%>%
+  left_join(agb_file_SSP585_ndep_ukesm%>%rename(ndep = npp), by = c("center_lon","center_lat"))%>%
+  distinct()%>%
+  mutate(ukesm = ndep-default)%>%
+  dplyr::select(-default, -ndep)%>%
+   distinct()
+
+#################
+
+bgb_file_CC_gfdl<-bgb_file_SSP585_default_gfdl%>%
+  rename(default = rh_npp)%>%
+  left_join(bgb_file_SSP585_2015co2_gfdl%>%rename(co22015 = rh_npp), by = c("center_lon","center_lat"))%>%
+  distinct()%>%
+  mutate(gfdl = default-co22015)%>%
+  dplyr::select(-default, -co22015)%>%
+   distinct()
+
+bgb_file_CO2_gfdl<-bgb_file_SSP585_2015co2_gfdl%>%
+  mutate(gfdl = rh_npp-1)%>%
+  dplyr::select(-rh_npp)%>%
+   distinct()
+
+
+bgb_file_N_gfdl<-bgb_file_SSP585_default_gfdl%>%
+  rename(default = rh_npp)%>%
+  left_join(bgb_file_SSP585_ndep_gfdl%>%rename(ndep = rh_npp), by = c("center_lon","center_lat"))%>%
+  distinct()%>%
+  mutate(gfdl = ndep-default)%>%
+  dplyr::select(-default, -ndep)%>%
+   distinct()
+
+
+
+bgb_file_CC_ukesm<-bgb_file_SSP585_default_ukesm%>%
+  rename(default = rh_npp)%>%
+  left_join(bgb_file_SSP585_2015co2_ukesm%>%rename(co22015 = rh_npp), by = c("center_lon","center_lat"))%>%
+  distinct()%>%
+  mutate(ukesm = default-co22015)%>%
+  dplyr::select(-default, -co22015)%>%
+   distinct()
+
+bgb_file_CO2_ukesm<-bgb_file_SSP585_2015co2_ukesm%>%
+  mutate(ukesm = rh_npp-1)%>%
+  dplyr::select(-rh_npp)%>%
+   distinct()
+
+
+bgb_file_N_ukesm<-bgb_file_SSP585_default_ukesm%>%
+  rename(default = rh_npp)%>%
+  left_join(bgb_file_SSP585_ndep_ukesm%>%rename(ndep = rh_npp), by = c("center_lon","center_lat"))%>%
+  distinct()%>%
+  mutate(ukesm = ndep-default)%>%
+  dplyr::select(-default, -ndep)%>%
+   distinct()
+
+###################
+
+
+
+
+
+
+
+
+
+
+
+agb_file_SSP126_mean<-read_rds("agb_file_SSP126_mean.RDS") 
+
+not_NA_col_num <- which(is.na(agb_file_SSP126_mean$mean))
+
+agb_file_N_mean <- agb_file_N_gfdl %>%
+  left_join(agb_file_N_ukesm)  %>%
+  mutate(mean = rowMeans(cbind(ukesm, gfdl), na.rm = TRUE))%>%
+  mutate(mean=ifelse(is.na(mean),0,mean))%>%
+  mutate(mean = ifelse(row_number() %in% not_NA_col_num, NA, mean))
+
+agb_file_CC_mean <- agb_file_CC_gfdl %>%
+  mutate(gfdl=ifelse(is.na(gfdl),0,gfdl))%>%
+  left_join(agb_file_CC_ukesm, by = c("center_lon", "center_lat"))  %>%
+  mutate(mean = rowMeans(cbind(ukesm, gfdl), na.rm = TRUE))%>%
+  mutate(mean=ifelse(is.na(mean),0,mean))%>%
+  mutate(mean = ifelse(row_number() %in% not_NA_col_num, NA, mean))
+
+# Check for duplicates and fix joins
+agb_file_CO2_mean <-
+  agb_file_CO2_gfdl %>%
+  left_join(agb_file_CC_ukesm, by = c("center_lon", "center_lat"))  %>%
+  mutate(mean = rowMeans(cbind(ukesm, gfdl), na.rm = TRUE))%>%
+  mutate(mean=ifelse(is.na(mean),0,mean))%>%
+  mutate(mean = ifelse(row_number() %in% not_NA_col_num, NA, mean))
+
+
+
+
+
+bgb_file_CC_mean<-bgb_file_CC_gfdl%>%
+  left_join(bgb_file_CC_ukesm) %>%
+  mutate(mean = rowMeans(cbind(ukesm, gfdl), na.rm = TRUE))%>%
+  mutate(mean=ifelse(is.na(mean),0,mean))%>%
+  mutate(mean = ifelse(row_number() %in% not_NA_col_num, NA, mean))
+
+
+bgb_file_CO2_mean<-bgb_file_CO2_gfdl%>%
+  left_join(
+    bgb_file_CC_ukesm, by = c("center_lon", "center_lat")
+  ) %>%
+  mutate(mean = rowMeans(cbind(ukesm, gfdl), na.rm = TRUE))%>%
+  mutate(mean=ifelse(is.na(mean),0,mean))%>%
+  mutate(mean = ifelse(row_number() %in% not_NA_col_num, NA, mean))
+
+
+ 
+
+
+
+
+
+bgb_file_N_mean<-bgb_file_N_gfdl%>%
+  left_join(bgb_file_N_ukesm)%>%
+  mutate(mean = rowMeans(cbind(ukesm, gfdl), na.rm = TRUE))%>%
+  mutate(mean=ifelse(is.na(mean),0,mean))%>%
+  mutate(mean = ifelse(row_number() %in% not_NA_col_num, NA, mean))
+
+```
+
+
+```{r S3 read harmonized land type area in each subregion table }
+
+# Combine your three datasets (df1, df2, df3)
+
+
+# Calculate global min and max for npp across all datasets
+value_min <- min(
+  agb_file_CC_mean$mean,
+  agb_file_CO2_mean$mean,
+  agb_file_N_mean$mean,
+  bgb_file_CC_mean$mean,
+  bgb_file_CO2_mean$mean,
+  bgb_file_N_mean$mean,
+  na.rm = TRUE
+)
+value_max <- max(agb_file_SSP585_default_gfdl$npp,
+  agb_file_CC_mean$mean,
+  agb_file_CO2_mean$mean,
+  agb_file_N_mean$mean,
+  bgb_file_CC_mean$mean,
+  bgb_file_CO2_mean$mean,
+  bgb_file_N_mean$mean,
+  na.rm = TRUE)
+
+
+value_min <--1
+value_max <- 1
+
+
+# Function to plot spatial data
+plot_spatial_map <- function(data, npp_min, npp_max,show_legend = FALSE,if_ytitle=FALSE,ifxlabel=FALSE) {
+  
+  # data<-agb_file_CC_mean
+  # value_min<-value_min
+  # value_max<-value_max
+  # 
+  # if_ytitle<-TRUE
+  # ifxlabel<-FALSE
+  # show_legend <- TRUE
+  
+  
+ 
+  
+  p <- ggplot(data, aes(x = center_lon, y = center_lat, fill = mean)) +
+  geom_tile() +  # Create the gridded map
+  geom_sf(
+    data = data_sf,  # Use the custom shapefile
+    inherit.aes = FALSE,  # Prevent inheritance of fill = mean from ggplot()
+    fill = NA,  # No fill color for the boundary
+    color = "grey20",  # Boundary line color
+    size = 0.4         # Line thickness
+  ) +
+  labs(
+    y = '',
+    x = '',
+    title = ''
+  ) +
+  scale_fill_gradientn(
+    # colors = c("#FF6503", "#ffffb2", "#2BA428"),
+    colors = c("#D33300", "#ffffb2", "#169B13"),
+    
+    values = rescale(c(value_min, 0, value_max)),  # Normalize the values to include min, 0, and max
+    limits = c(value_min, value_max),  # Set color scale limits
+    name = "Carbon scalar",
+    na.value = "grey80",  # Set NA or missing values to grey80
+    guide = guide_colourbar(
+      ticks.colour = "black",  # Set scale ticks color to grey20
+      ticks.linewidth = 0.3,    # Adjust tick line width for better visibility
+      frame.colour = "black",  # Set color bar border to grey20
+      frame.linewidth = 0.3,    # Adjust the border line width
+      # ticks = element_line(),             # Ensure ticks are shown
+      # nbin = 100, 
+      # draw.ulim = FALSE, 
+      # draw.llim = FALSE,
+      label.hjust = 1,  # Align the tick labels to the right
+      # ticks.outside = TRUE  # Set ticks to appear only outside the color bar      # Place ticks outside the color bar border
+    )
+  ) +
+  theme_minimal() +
+  theme(
+    panel.border = element_rect(color = "black", fill = NA, size = 0.5),
+    panel.background = element_rect(fill = "white", colour = NA),
+    plot.background = element_rect(fill = "white", colour = NA),
+    axis.text.x = element_blank(),  # Remove X-axis tick labels
+    axis.text.y = element_blank(),  # Remove Y-axis tick labels
+    axis.ticks.x = element_blank(),  # Remove X-axis ticks
+    axis.ticks.y = element_blank(),  # Remove Y-axis ticks
+    axis.title.x = element_blank(),  # Remove X-axis title
+    axis.title.y = element_blank(),  # Remove Y-axis title
+    panel.grid.major = element_blank(),  # Hide major gridlines
+    panel.grid.minor = element_blank(),  # Hide minor gridlines
+    legend.text = element_text(size = 15),
+    legend.title = element_text(size = 15),
+    legend.position = ifelse(show_legend, "right", "none"),
+    plot.margin = margin(t = 0, r = 0, b = 0, l = 0) , # Adjust margins
+    legend.ticks.length = unit(c(-.15, 0), 'cm'), # different lengths for ticks on both sides
+    legend.ticks = element_line(color='black') # just to show the ticks on a white background
+  )
+
+
+
+  
+  
+  if (!if_ytitle) {
+    p <- p +
+      theme(axis.text.y = element_blank(),
+            axis.ticks.y = element_blank())
+  }
+
+  if (ifxlabel) {p<-p
+    
+  }else if (ifxlabel == FALSE) {
+  p <- p +
+      theme(axis.text.x = element_blank(),
+            axis.ticks.x = element_blank())}
+  
+  return(p)
+}
+
+
+
+
+
+###############################
+  # x_ticks <- seq(-180, 180, by = 90)  # Longitude range from -180 to 180 with 60-degree increments
+  # y_ticks <- seq(-60, 85, by = 45)    # Latitude range from -90 to 90 with 30-degree increments
+  # 
+  # x_labels <- paste0(x_ticks, "°E")  # Append "°E" to each x tick label
+  # y_labels <- paste0(y_ticks, "°N")  # Append "°N" to each y tick label
+  # 
+  # x_breaks <- seq(-180, 180, by = 90)  # Longitude graticule breaks
+  # y_breaks <- seq(-60, 85, by = 45)     # Latitude graticule breaks
+  # 
+  # 
+  # border <- ggplot(agb_file_SSP585_default_mean, aes(x = center_lon, y = center_lat, fill = mean)) +
+  #     scale_fill_gradientn(
+  #     colors = c("#FF6503", "#ffffb2", "#2BA428"),
+  #     values = rescale(c(value_min, 1, value_max)), # Normalize the values to include min, 0, and max
+  #     limits = c(value_min, value_max), # Set color scale limits
+  #     name = "Carbon scalar",
+  #     na.value = "grey80", # Set NA or missing values to grey20
+  #     guide = guide_colourbar(  # Customize the legend ticks
+  #       ticks.colour = "grey80",  # Change tick color to grey20
+  #       ticks.linewidth = 0.5    # Adjust tick line width for better visibility
+  #     )
+  #   ) +
+  #   
+  #    scale_x_continuous(breaks = x_ticks, labels = x_labels) +
+  #   scale_y_continuous(breaks = y_ticks, labels = y_labels) +
+  #   theme_base() +
+  #   labs(
+  #     y = '',
+  #     x = '',
+  #     title = ''
+  #   ) +
+  #   theme(
+  #     panel.background = element_rect(fill = "white", colour = NA),
+  #     plot.background = element_rect(fill = "white", colour = NA),
+  #     plot.title = element_text(hjust = 0.5, size = 15),
+  #     axis.title.x = element_text(size = 15),
+  #     axis.title.y = element_text(size = 15, face = "bold"),
+  #     axis.text.x = element_text(size = 14.5),
+  #     axis.text.y = element_text(size = 14.5),
+  #     legend.text = element_text(size = 15),
+  #     legend.title = element_text(size = 15),
+  #     legend.position = ifelse(show_legend, "right", "none"),
+  #     plot.margin = margin(t = 0, r = 1, b = 0, l = 0))
+  #   
+  # borderx <- border +
+  #     theme(axis.text.y = element_blank(),
+  #           axis.ticks.y = element_blank())
+  # 
+  # bordery <- border +
+  #     theme(axis.text.x = element_blank(),
+  #           axis.ticks.x = element_blank())
+################################
+
+# Example: Plot for the first dataset (replace df1 with your actual dataset name)
+plot_agb_CC_mean <- plot_spatial_map(agb_file_CC_mean, value_min, value_max,if_ytitle=TRUE,ifxlabel=FALSE)
+
+plot_agb_CO2_mean <- plot_spatial_map(agb_file_CO2_mean, value_min, value_max,if_ytitle=TRUE,ifxlabel=FALSE)
+
+plot_agb_N_mean <- plot_spatial_map(agb_file_N_mean, value_min, value_max,if_ytitle=TRUE,ifxlabel=TRUE)
+
+
+
+plot_bgb_CC_mean <- plot_spatial_map(bgb_file_CC_mean, value_min, value_max,if_ytitle=FALSE,ifxlabel=FALSE)
+
+plot_bgb_CO2_mean <- plot_spatial_map(bgb_file_CO2_mean, value_min, value_max,if_ytitle=FALSE,ifxlabel=FALSE)
+
+plot_bgb_N_mean <- plot_spatial_map(bgb_file_N_mean, value_min, value_max,if_ytitle=FALSE,ifxlabel=TRUE)
+
+
+
+
+
+plot_legend<-plot_spatial_map(agb_file_N_mean, value_min, value_max, TRUE)
+legend <- cowplot::get_legend(plot_legend)
+
+```
+
+
+
+
+
+```{r agb bgb save}
+
+
+combined_agb_plots <- wrap_plots(plot_agb_CC_mean,plot_agb_CO2_mean,plot_agb_N_mean, nrow = 3)
+combined_bgb_plots <- wrap_plots(plot_bgb_CC_mean,plot_bgb_CO2_mean,plot_bgb_N_mean, nrow = 3)
+# combined_agbbgb_plots <- wrap_plots(p_C_126,p_bC_126,p_C_370,p_bC_370,p_C_585,p_bC_585, nrow = 3)
+##############################################
+combined_global_bgb_plot <- plot_grid(
+  combined_agb_plots, 
+  combined_bgb_plots,
+  legend,                 # Legend
+  ncol = 3,                      # Two columns: one for plots, one for the legend
+  rel_widths = c(0.625,0.625, 0.2)         # Relative widths, giving most space to the plots and less to the legend
+)
+
+
+
+
+
+ggsave(paste0(fig_save_path, "/Fig63_CC_component_combined_Sagb_bgb_spatial_2forcing_mean_v",version_num,".pdf"), plot = combined_global_bgb_plot, width = 15*0.8, height = 10*0.8, units = "in")
+
+
+# ggsave(paste0(fig_save_path, "/Fig63_CC_component_combined_Sagb_bgb_spatial_2forcing_mean_bounder_v",version_num,".pdf"), plot = border, width = 8*0.8, height = 4*0.8, units = "in")
+# 
+# ggsave(paste0(fig_save_path, "/Fig63_CC_component_combined_Sagb_bgb_spatial_2forcing_mean_bounderx_v",version_num,".pdf"), plot = borderx, width = 8*0.8, height = 4*0.8, units = "in")
+
+# ggsave(paste0(fig_save_path, "/Fig63_CC_component_combined_Sagb_bgb_spatial_2forcing_mean_boundery_v",version_num,".pdf"), plot = bordery, width = 8*0.8, height = 4*0.8, units = "in")
+
+
+
+
+```
+
+
+
